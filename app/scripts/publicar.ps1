@@ -304,7 +304,8 @@ function Get-StatusCode($err) {
 }
 
 function Invoke-GitHub([string] $Method, [string] $Uri, $Body = $null) {
-    $params = @{ Method = $Method; Uri = $Uri; Headers = $script:ghHeaders; TimeoutSec = 60; ErrorAction = 'Stop' }
+    # Conexión nueva en cada llamada: en PowerShell 5.1 reutilizarla puede cortar la subida siguiente.
+    $params = @{ Method = $Method; Uri = $Uri; Headers = $script:ghHeaders; TimeoutSec = 60; ErrorAction = 'Stop'; DisableKeepAlive = $true }
     if ($null -ne $Body) {
         $params.ContentType = 'application/json; charset=utf-8'
         $params.Body = [Text.Encoding]::UTF8.GetBytes(($Body | ConvertTo-Json -Compress))
@@ -369,8 +370,26 @@ if ($GitHub) {
             if ($old) { Invoke-GitHub 'DELETE' "$GitHubApi/repos/$Repo/releases/assets/$($old.id)" | Out-Null }
             Write-Host ("  Subiendo {0} ({1})…" -f $apk.Name, (Format-Size $apk.Length))
             $uri = "$GitHubUploads/repos/$Repo/releases/$($release.id)/assets?name=$([uri]::EscapeDataString($apk.Name))"
-            $asset = Invoke-RestMethod -Method Post -Uri $uri -Headers $script:ghHeaders -ContentType 'application/vnd.android.package-archive' `
-                -InFile $apk.FullName -TimeoutSec 1800 -ErrorAction Stop
+            $asset = $null
+            for ($attempt = 1; -not $asset; $attempt++) {
+                try {
+                    $asset = Invoke-RestMethod -Method Post -Uri $uri -Headers $script:ghHeaders -ContentType 'application/vnd.android.package-archive' `
+                        -InFile $apk.FullName -TimeoutSec 1800 -DisableKeepAlive -ErrorAction Stop
+                } catch {
+                    $code = Get-StatusCode $_
+                    # 422 = ya existe un archivo con ese nombre (quedó de un intento cortado): se borra y se vuelve a subir.
+                    if ($code -eq 422 -and $attempt -lt 3) {
+                        $current = Invoke-GitHub 'GET' "$GitHubApi/repos/$Repo/releases/$($release.id)"
+                        $dup = @($current.assets) | Where-Object { $_.name -eq $apk.Name } | Select-Object -First 1
+                        if ($dup) { Invoke-GitHub 'DELETE' "$GitHubApi/repos/$Repo/releases/assets/$($dup.id)" | Out-Null }
+                    } elseif (($code -eq 0 -or $code -ge 500) -and $attempt -lt 3) {
+                        Write-Host "    Se cortó la subida, reintentando ($($attempt + 1)/3)…" -ForegroundColor Yellow
+                        Start-Sleep -Seconds (3 * $attempt)
+                    } else {
+                        throw
+                    }
+                }
+            }
             if ([long]$asset.size -ne $apk.Length) { Fail "GitHub recibió $($asset.size) bytes de $($apk.Name) y el archivo tiene $($apk.Length)." }
             Write-Host '    OK' -ForegroundColor Green
         }
