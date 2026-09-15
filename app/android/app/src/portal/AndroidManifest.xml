@@ -1,0 +1,14 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Solo la versión "portal" (APK para celulares y TV box): instalar las actualizaciones que reparte el portal.
+         La versión "play" NO lleva este permiso (Google Play lo restringe). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <application>
+        <!-- Entrega el APK descargado (cache/updates) al instalador del sistema. -->
+        <provider
+            android:name="com.iptvplayer.iptv_player.UpdateApkProvider"
+            android:authorities="${applicationId}.updates"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+    </application>
+</manifest>
