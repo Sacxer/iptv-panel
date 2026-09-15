@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ArrowRight, Cloud, DatabaseBackup, Network, Radio, RefreshCw, Server, Users, ZapOff } from 'lucide-react';
+import { ArrowRight, Cloud, DatabaseBackup, GitBranch, Network, Radio, RefreshCw, Server, Smartphone, Users, ZapOff } from 'lucide-react';
 import { useServers } from '../../hooks/useStreaming';
 import { api } from '../../api';
 import { useAuth } from '../../context/AuthContext';
@@ -136,6 +136,33 @@ export function DashboardPage() {
             <span className="summary-value">{formatNumber(servers.reduce((n, sv) => n + (sv.streams_running ?? 0), 0))}</span>
             <span className="summary-label">canales emitiendo</span>
           </span>
+          <ArrowRight size={16} className="streaming-strip-arrow" />
+        </Link>
+      )}
+
+      {isAdmin && data?.updates && (
+        <Link
+          to="/version"
+          className={`streaming-strip updates-strip ${data.updates.panel_update_available || data.updates.app_update_pending ? 'is-pending' : ''}`}
+        >
+          <span className="streaming-strip-title">
+            <GitBranch size={16} /> Versión
+          </span>
+          <span className="summary-item">
+            <span className="summary-value">Panel v{data.updates.version}</span>
+            {data.updates.panel_update_available === true ? (
+              <span className="badge badge-amber">Actualización disponible</span>
+            ) : data.updates.panel_update_available === false ? (
+              <span className="summary-label">· al día</span>
+            ) : (
+              <span className="summary-label">{data.updates.checked_at ? '· versión instalada desconocida' : '· sin revisar'}</span>
+            )}
+          </span>
+          {data.updates.app_update_pending && data.updates.app_latest && (
+            <span className="summary-item text-amber">
+              <Smartphone size={14} /> App {data.updates.app_latest} en GitHub sin traer
+            </span>
+          )}
           <ArrowRight size={16} className="streaming-strip-arrow" />
         </Link>
       )}

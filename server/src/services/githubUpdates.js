@@ -49,13 +49,17 @@ export function repoFromUrl(url) {
   return m ? m[1] : null;
 }
 
+/** Repositorio y rama de las actualizaciones: automáticos (los del instalador o el repositorio del proyecto). */
+export function updateSource(build = currentBuild()) {
+  const valid = (r) => /^[\w.-]+\/[\w.-]+$/.test(String(r || ''));
+  const repo = [config.github.repoOverride, build.repo, config.github.defaultRepo].find(valid);
+  const branch = config.github.branchOverride || (build.branch && build.branch !== 'HEAD' ? build.branch : 'main');
+  return { repo, branch };
+}
+
 async function target() {
-  const s = (await getSettings()).updates;
   const build = currentBuild();
-  const repo = String(s.github_repo || build.repo || config.github.defaultRepo).trim().replace(/^https?:\/\/github\.com\//i, '').replace(/\.git$/, '');
-  if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new HttpError(400, 'Repositorio de GitHub no válido (formato usuario/repositorio)');
-  const branch = String(s.branch || (build.branch && build.branch !== 'HEAD' ? build.branch : '') || 'main').trim();
-  return { repo, branch, build, settings: s };
+  return { ...updateSource(build), build, settings: (await getSettings()).updates };
 }
 
 async function gh(apiPath, { raw = false } = {}) {
@@ -198,7 +202,22 @@ export async function checkUpdates() {
   }
 }
 
-export const lastCheck = () => state.result;
+/** Último resultado, con el estado de la app (importada/publicada) leído de la base en este momento. */
+export async function lastCheck() {
+  const r = state.result;
+  if (!r?.app?.latest) return r;
+  const imported = await db('app_releases').where({ version_name: r.app.latest.version_name }).first();
+  const files = imported ? await db('app_release_files').where({ release_id: imported.id }).select('abi') : [];
+  return {
+    ...r,
+    app: {
+      ...r.app,
+      imported: Boolean(imported) && r.app.latest.assets.every((a) => files.some((f) => f.abi === a.abi)),
+      release_id: imported?.id || null,
+      published: imported ? bool(imported.published) : false,
+    },
+  };
+}
 
 async function download(asset, dest) {
   const res = await fetch(asset.download_url, {

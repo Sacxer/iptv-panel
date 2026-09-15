@@ -36,7 +36,10 @@ import type {
   DeviceAlert,
   DeviceAlertStatus,
   DeviceAlertType,
+  AppImportResult,
   AppRelease,
+  UpdatesOverview,
+  UpdatesSettings,
   AppReleaseInput,
   AppReleasesOverview,
   AppUploadResult,
@@ -472,6 +475,13 @@ export const api = {
     match: (input: EpgMatchInput) => post<EpgMatchResult>('/epg/match', input),
     assign: (input: { stream_id: number; xmltv_id: string | null; locked?: boolean; fill_logo?: boolean }) => post<EpgAssignResult>('/epg/assign', input),
     buildGuide: () => post<EpgGuideState>('/epg/guide/build'),
+  },
+
+  updates: {
+    get: () => get<UpdatesOverview>('/updates'),
+    check: () => post<UpdatesOverview>('/updates/check'),
+    importApp: (input: { tag?: string; publish?: boolean }) => post<AppImportResult>('/updates/app/import', input),
+    updateSettings: (input: Partial<UpdatesSettings>) => put<UpdatesOverview>('/updates/settings', input),
   },
 
   appReleases: {

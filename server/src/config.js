@@ -41,8 +41,10 @@ export const config = {
   version: readJson(path.join(ROOT_DIR, 'package.json'))?.version || '0.0.0',
   buildInfoFile: process.env.BUILD_INFO_FILE || path.join(ROOT_DIR, 'build-info.json'),
   github: {
-    // Repositorio de donde salen las actualizaciones del panel y de la app (se puede cambiar en Ajustes).
-    defaultRepo: process.env.UPDATES_REPO || 'Sacxer/iptv-panel',
+    // Repositorio fijo de donde salen las actualizaciones del panel y de la app.
+    defaultRepo: 'Sacxer/iptv-panel',
+    repoOverride: process.env.UPDATES_REPO || '', // solo para pruebas o un repositorio distinto
+    branchOverride: process.env.UPDATES_BRANCH || '',
     apiUrl: (process.env.GITHUB_API_URL || 'https://api.github.com').replace(/\/+$/, ''),
     token: process.env.GITHUB_TOKEN || '', // solo si el repositorio es privado
   },

@@ -63,8 +63,6 @@ export const DEFAULT_SETTINGS = {
   notices_carousel_seconds: 8,
   // Actualizaciones desde GitHub (panel y app)
   updates: {
-    github_repo: '', // vacío = el del instalador o el predeterminado
-    branch: '', // vacío = la rama instalada o "main"
     check_enabled: true,
     check_hours: 6,
     auto_import_app: false, // traer sola cada versión nueva de la app (queda en borrador)

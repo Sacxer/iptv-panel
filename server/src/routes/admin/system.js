@@ -121,8 +121,8 @@ systemRouter.get('/dashboard', async (req, res) => {
     ),
     expiring_soon: await serializeUsers(expiringRows),
     backups: isReseller(req) ? null : await backupOverview(),
-    updates: isReseller(req) ? null : (() => {
-      const last = lastCheck();
+    updates: isReseller(req) ? null : await (async () => {
+      const last = await lastCheck();
       return {
         version: currentBuild().version,
         checked_at: last?.checked_at || null,

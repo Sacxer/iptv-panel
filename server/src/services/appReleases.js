@@ -1,4 +1,4 @@
-// Actualizaciones de la app propia repartidas desde el portal (TV box y equipos sin Play Store).
+// Actualizaciones de la app propia repartidas desde el portal (celulares, TV box y Android TV que instalan el APK).
 // El administrador sube los APK; la app pregunta si hay una versión más nueva para su arquitectura.
 import crypto from 'node:crypto';
 import fs from 'node:fs';

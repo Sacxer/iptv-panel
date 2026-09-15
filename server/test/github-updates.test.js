@@ -137,13 +137,16 @@ describe('actualizaciones desde GitHub', () => {
     assert.equal(rel.files.find((f) => f.abi === 'arm64-v8a').sha256, sha(apks.arm64));
     const offer = await ctx.api('GET', '/api/client/app-update?package=com.iptvplayer.app&version_code=2001&abis=arm64-v8a', undefined, { auth: false });
     assert.equal(offer.data.update, false, 'no se ofrece hasta publicarla');
+    await ctx.api('PATCH', `/api/admin/app-releases/${imp.data.release_id}`, { published: true });
+    assert.equal((await ctx.api('GET', '/api/admin/updates')).data.last.app.published, true, 'el estado se lee en vivo, sin volver a consultar GitHub');
+    await ctx.api('PATCH', `/api/admin/app-releases/${imp.data.release_id}`, { published: false });
   });
 
   test('con publicación automática la versión nueva llega a los equipos; huella dañada se rechaza', async () => {
-    const bad = await ctx.api('PUT', '/api/admin/updates/settings', { github_repo: 'no es repo' });
-    assert.equal(bad.status, 400);
-    const s = await ctx.api('PUT', '/api/admin/updates/settings', { github_repo: 'https://github.com/Sacxer/iptv-panel.git', auto_publish_app: true, check_hours: 12 });
-    assert.equal(s.data.settings.github_repo, 'Sacxer/iptv-panel');
+    const s = await ctx.api('PUT', '/api/admin/updates/settings', { github_repo: 'otro/repo', auto_publish_app: true, check_hours: 12 });
+    assert.equal(s.data.repo, 'Sacxer/iptv-panel', 'el repositorio es automático y no se cambia desde el panel');
+    assert.equal(s.data.branch, 'main');
+    assert.equal(s.data.settings.github_repo, undefined);
     assert.equal(s.data.settings.check_hours, 12);
 
     fake.withV103 = true;

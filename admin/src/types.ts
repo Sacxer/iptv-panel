@@ -767,6 +767,87 @@ export interface NetworkInfo {
   effective_base_url: string;
 }
 
+// ---------- Versión y actualizaciones (GitHub) ----------
+
+export interface GithubAppRelease {
+  tag: string;
+  version_name: string;
+  name: string | null;
+  notes: string | null;
+  prerelease: boolean;
+  published_at: number | null;
+  url: string | null;
+  assets: { name: string; size: number; abi: string | null; sha256: string | null; download_url: string }[];
+}
+
+export interface UpdatesOverview {
+  current: {
+    version: string;
+    commit: string | null;
+    branch: string | null;
+    repo: string | null;
+    installed_at: number | null;
+    source: 'installer' | 'git' | 'unknown' | string;
+    node: string;
+  };
+  /** Repositorio y rama de las actualizaciones (automáticos). */
+  repo: string;
+  branch: string;
+  settings: UpdatesSettings;
+  checking: boolean;
+  importing: boolean;
+  last: {
+    checked_at: number | null;
+    repo: string;
+    branch: string;
+    error: string | null;
+    panel: {
+      current_version: string;
+      current_commit: string | null;
+      latest_version: string | null;
+      latest_commit: string | null;
+      latest_message: string | null;
+      latest_date: number | null;
+      update_available: boolean | null;
+      commits_behind: number | null;
+      changes: { sha: string; message: string; date: number | null }[];
+      install_command: string | null;
+      compare_url: string | null;
+    } | null;
+    app: {
+      latest: GithubAppRelease | null;
+      beta: GithubAppRelease | null;
+      imported: boolean;
+      release_id: number | null;
+      published: boolean;
+    } | null;
+  } | null;
+}
+
+export interface UpdatesSettings {
+  check_enabled: boolean;
+  check_hours: number;
+  auto_import_app: boolean;
+  auto_publish_app: boolean;
+}
+
+export interface AppImportResult {
+  tag: string;
+  version_name: string;
+  release_id: number | null;
+  published: boolean;
+  files: ({ name: string; abi: string; version_code: number; replaced: boolean; warnings: string[] } | { name: string; error: string })[];
+  overview: UpdatesOverview;
+}
+
+export interface DashboardUpdates {
+  version: string;
+  checked_at: number | null;
+  panel_update_available: boolean | null;
+  app_latest: string | null;
+  app_update_pending: boolean;
+}
+
 // ---------- Actualizaciones de la app ----------
 
 export type AppTarget = 'tvbox' | 'smart_tv' | 'mobile' | 'tablet' | 'pc' | 'stb';
@@ -985,6 +1066,7 @@ export interface Dashboard {
   offline_streams?: OfflineStream[];
   active_outages: number;
   backups?: DashboardBackups | null;
+  updates?: DashboardUpdates | null;
   expiring_soon: User[];
   recent_logs: LogEntry[];
 }

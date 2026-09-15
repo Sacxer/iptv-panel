@@ -114,7 +114,7 @@ Para no escribir IP y puerto, la app busca el portal en la red local de dos form
 
 La URL elegida se usa como servidor Xtream (`http://IP:puerto`). Fuera de la red local hay que escribirla (o usar `public_url`).
 
-### Actualización de la app propia (versión "portal", para TV box sin Play Store)
+### Actualización de la app propia (APK "portal": celulares, TV box y Android TV que la instalan sin Play Store)
 Sin credenciales (funciona antes de iniciar sesión o con la cuenta cortada).
 
 `GET /api/client/app-update?package=com.iptvplayer.app&version_code=2003&version_name=1.0.1&abis=arm64-v8a,armeabi-v7a&device_type=tvbox&device_id=…&channel=stable&sdk=31`
@@ -665,7 +665,8 @@ En Ajustes (`GET/PUT /settings`): `company_name`, `app_name` ("IPTV Player"), `s
 
 ### Versión y actualizaciones desde GitHub (solo admin)
 El instalador guarda de qué commit se instaló (`server/build-info.json`: `{"commit","branch","repo","installed_at"}`); en desarrollo se lee
-del repositorio git local. Repositorio por defecto `Sacxer/iptv-panel` (`UPDATES_REPO`); si es privado, `GITHUB_TOKEN` en el `.env`.
+del repositorio git local. El repositorio es **automático**: el del instalador o `Sacxer/iptv-panel`, rama `main` (no se configura en el panel;
+`UPDATES_REPO`/`UPDATES_BRANCH` solo para pruebas; `GITHUB_TOKEN` si algún día fuera privado).
 
 - **Panel**: compara el commit instalado con la rama en GitHub. Actualizar = volver a ejecutar la línea de instalación en el servidor.
 - **App**: cada versión es un *Release* de GitHub con etiqueta `app-v<versión>` (p. ej. `app-v1.0.2`) y los APK adjuntos
@@ -674,7 +675,7 @@ del repositorio git local. Repositorio por defecto `Sacxer/iptv-panel` (`UPDATES
   (en borrador salvo que se pida publicar o esté activado `auto_publish_app`). Las notas del Release pasan a las novedades.
 
 - `GET /updates` → `{"current":{"version","commit","branch","repo","installed_at","source":"installer|git|unknown","node"},
-  "settings":{"github_repo","branch","check_enabled","check_hours","auto_import_app","auto_publish_app"},"default_repo","checking","importing",
+  "repo":"Sacxer/iptv-panel","branch":"main","settings":{"check_enabled","check_hours","auto_import_app","auto_publish_app"},"checking","importing",
   "last":{"checked_at","repo","branch","error",
   "panel":{"current_version","current_commit","latest_version","latest_commit","latest_message","latest_date","update_available":true|false|null,
   "commits_behind","changes":[{"sha","message","date"}],"install_command","compare_url"},
@@ -685,7 +686,7 @@ del repositorio git local. Repositorio por defecto `Sacxer/iptv-panel` (`UPDATES
   (60 por hora sin token); se conserva el último resultado bueno con `last.error`.
 - `POST /updates/app/import` `{"tag?":"app-v1.0.2","publish?":bool}` (por defecto la última estable) →
   `{"tag","version_name","release_id","published","files":[{"name","abi","version_code","replaced","warnings"}|{"name","error"}],"overview":{…}}`
-- `PUT /updates/settings` `{"github_repo":"usuario/repo"|"","branch":"","check_enabled","check_hours":1-168,"auto_import_app","auto_publish_app"}`
+- `PUT /updates/settings` `{"check_enabled","check_hours":1-168,"auto_import_app","auto_publish_app"}`
 - Automático: revisa cada `check_hours` (primera revisión 2 min después de arrancar; `UPDATES_CHECK=false` lo apaga); con `auto_import_app`
   importa sola la versión nueva de la app.
 - En `GET /dashboard`: `updates: {version, checked_at, panel_update_available, app_latest, app_update_pending}`.

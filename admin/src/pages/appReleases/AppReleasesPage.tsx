@@ -23,6 +23,7 @@ import { Alert, Badge, CopyButton, EmptyState, ErrorState, FormField, PageHeader
 import type { AppRelease, AppReleaseFile, AppReleasesOverview, AppTarget, AppUploadResult } from '../../types';
 import { formatDateTime, formatNumber, timeAgo } from '../../utils/format';
 import { formatBytes } from '../backups/backupUtils';
+import { GithubAppUpdatesCard, useUpdates } from '../version/appUpdates';
 
 const TARGET_LABEL: Record<string, string> = {
   tvbox: 'TV Box',
@@ -41,7 +42,9 @@ const ABI_LABEL: Record<string, string> = {
 };
 
 function targetsText(targets: AppTarget[]): string {
-  return targets.length === 0 ? 'todos los tipos de equipo' : targets.map((t) => TARGET_LABEL[t] ?? t).join(', ');
+  return targets.length === 0
+    ? 'todos los equipos que tienen instalada la app desde el APK (celulares, TV Box, Android TV…)'
+    : targets.map((t) => TARGET_LABEL[t] ?? t).join(', ');
 }
 
 // ---------- Cola de subida ----------
@@ -61,6 +64,16 @@ export function AppReleasesPage() {
   const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const runningRef = useRef(false);
+  const [highlight, setHighlight] = useState<number | null>(null);
+  const updates = useUpdates({ onImported: (res) => {
+    void data.reload(true);
+    if (res.release_id) setHighlight(res.release_id);
+  } });
+
+  const showRelease = (id: number) => {
+    setHighlight(id);
+    window.setTimeout(() => document.getElementById(`release-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  };
 
   const d = data.data;
 
@@ -109,14 +122,15 @@ export function AppReleasesPage() {
     <>
       <PageHeader
         title="Actualizaciones de la app"
-        subtitle="Versiones de tu app IPTV Player para los equipos que se actualizan desde el portal"
+        subtitle="Versiones de tu app IPTV Player que los equipos descargan e instalan desde el portal"
       />
 
       <Alert tone="blue" icon={<Tv size={18} />}>
-        Los <strong>TV Box de la empresa</strong> (sin Play Store) descargan aquí las nuevas versiones y se actualizan solos. Los{' '}
-        <strong>celulares</strong> se actualizan desde Google Play: allí sube la versión por la consola de Google Play, no hace falta publicarla
-        aquí.
+        Los <strong>celulares, TV Box y Android TV</strong> que tienen la app instalada desde el APK buscan aquí las versiones nuevas. (Si más
+        adelante publicas en Google Play, los que la instalen desde Play se actualizan por Play.)
       </Alert>
+
+      <GithubAppUpdatesCard updates={updates} releases={data.data?.items ?? null} onShowRelease={showRelease} />
 
       <div className="apprel-top">
         <section className="card">
@@ -160,16 +174,16 @@ export function AppReleasesPage() {
             <summary>¿Qué archivos subo?</summary>
             <ul className="plain-list text-sm">
               <li>
-                <code>app-armeabi-v7a-release.apk</code>: la mayoría de TV Box.
+                <code>app-arm64-v8a-release.apk</code>: la mayoría de celulares y TV Box modernos.
               </li>
               <li>
-                <code>app-arm64-v8a-release.apk</code>: equipos de 64 bits más recientes.
+                <code>app-armeabi-v7a-release.apk</code>: TV Box y celulares más antiguos o económicos.
               </li>
               <li>
-                <code>app-x86_64-release.apk</code>: emuladores y algunos PC.
+                <code>app-x86_64-release.apk</code>: emuladores y PC.
               </li>
               <li>
-                O solo el universal <code>app-release.apk</code> (sirve para todos, pero pesa más).
+                Si no estás seguro, el universal <code>app-release.apk</code>: sirve para todos, pero pesa más.
               </li>
             </ul>
           </details>
@@ -198,7 +212,8 @@ export function AppReleasesPage() {
             description={
               <>
                 Genera los APK con <code>app/scripts/publicar.ps1</code> desde el proyecto (crea los archivos de cada arquitectura en{' '}
-                <code>app/build/app/outputs/flutter-apk/</code>) y súbelos aquí. Quedan como borrador hasta que los publiques.
+                <code>app/build/app/outputs/flutter-apk/</code>) y súbelos aquí, o tráelos desde GitHub con la tarjeta de arriba. Quedan como borrador
+                hasta que los publiques; entonces los celulares, TV Box y Android TV con la app instalada desde el APK se actualizan solos.
               </>
             }
           />
@@ -206,7 +221,7 @@ export function AppReleasesPage() {
       ) : (
         <div className="apprel-list">
           {d.items.map((r) => (
-            <ReleaseCard key={r.id} release={r} targets={d.targets} onChanged={() => void data.reload(true)} />
+            <ReleaseCard key={r.id} release={r} targets={d.targets} highlighted={highlight === r.id} onChanged={() => { void data.reload(true); void updates.data.reload(true); }} />
           ))}
         </div>
       )}
@@ -305,7 +320,7 @@ function InstalledVersions({ overview }: { overview: AppReleasesOverview }) {
 
 // ---------- Versión ----------
 
-function ReleaseCard({ release, targets, onChanged }: { release: AppRelease; targets: AppTarget[]; onChanged: () => void }) {
+function ReleaseCard({ release, targets, highlighted, onChanged }: { release: AppRelease; targets: AppTarget[]; highlighted: boolean; onChanged: () => void }) {
   const toast = useToast();
   const confirm = useConfirm();
   const r = release;
@@ -336,12 +351,11 @@ function ReleaseCard({ release, targets, onChanged }: { release: AppRelease; tar
         message: (
           <div className="stack-sm">
             <span>
-              La recibirán <strong>{targetsText(r.targets)}</strong> con la app del portal
+              La recibirán <strong>{targetsText(r.targets)}</strong>
               {r.channel === 'beta' ? ' en el canal Beta' : ''}
               {r.rollout_percent < 100 ? `, solo el ${r.rollout_percent}% de los equipos (despliegue gradual)` : ''}.
             </span>
             {r.mandatory && <span className="text-red">Es obligatoria: la app no dejará seguir usándola hasta actualizar.</span>}
-            <span className="muted text-sm">Los celulares con la app de Google Play no la reciben por aquí.</span>
           </div>
         ),
         confirmText: 'Publicar',
@@ -395,7 +409,7 @@ function ReleaseCard({ release, targets, onChanged }: { release: AppRelease; tar
   };
 
   return (
-    <article className={`card apprel-card ${r.published ? 'is-published' : ''}`}>
+    <article id={`release-${r.id}`} className={`card apprel-card ${r.published ? 'is-published' : ''} ${highlighted ? 'is-highlighted' : ''}`}>
       <header className="apprel-card-head">
         <div className="apprel-card-title">
           <h2 className="no-margin">{r.version_name}</h2>
@@ -555,7 +569,7 @@ function ReleaseEditor({ release, targets, onSaved }: { release: AppRelease; tar
           </div>
         </FormField>
       </div>
-      <FormField label="Tipos de equipo" hint={sel.length === 0 ? 'Ninguno marcado = todos los tipos de equipo.' : `Solo: ${targetsText(sel)}.`}>
+      <FormField label="Tipos de equipo" hint={sel.length === 0 ? 'Ninguno marcado = todos los equipos con la app instalada desde el APK.' : `Solo: ${targetsText(sel)}.`}>
         <div className="chips">
           {(targets.length ? targets : (Object.keys(TARGET_LABEL) as AppTarget[])).map((t) => (
             <button key={t} type="button" className={`chip ${sel.includes(t) ? 'chip-active' : ''}`} aria-pressed={sel.includes(t)} onClick={() => toggle(t)}>

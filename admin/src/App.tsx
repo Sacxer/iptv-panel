@@ -19,6 +19,7 @@ const NoticesPage = lazy(() => import('./pages/NoticesPage').then((m) => ({ defa
 const OutagesPage = lazy(() => import('./pages/outages/OutagesPage').then((m) => ({ default: m.OutagesPage })));
 const ConnectionsPage = lazy(() => import('./pages/ConnectionsPage').then((m) => ({ default: m.ConnectionsPage })));
 const ChannelOrderPage = lazy(() => import('./pages/streams/ChannelOrderPage').then((m) => ({ default: m.ChannelOrderPage })));
+const VersionPage = lazy(() => import('./pages/version/VersionPage').then((m) => ({ default: m.VersionPage })));
 const AppReleasesPage = lazy(() => import('./pages/appReleases/AppReleasesPage').then((m) => ({ default: m.AppReleasesPage })));
 const BackupsPage = lazy(() => import('./pages/backups/BackupsPage').then((m) => ({ default: m.BackupsPage })));
 const EpgPage = lazy(() => import('./pages/epg/EpgPage').then((m) => ({ default: m.EpgPage })));
@@ -86,6 +87,7 @@ export function App() {
         <Route path="guia-epg" element={<RequireAdmin><EpgPage /></RequireAdmin>} />
         <Route path="copias-de-seguridad" element={<RequireAdmin><BackupsPage /></RequireAdmin>} />
         <Route path="actualizaciones-app" element={<RequireAdmin><AppReleasesPage /></RequireAdmin>} />
+        <Route path="version" element={<RequireAdmin><VersionPage /></RequireAdmin>} />
         <Route path="ordenar-canales" element={<RequireAdmin><ChannelOrderPage /></RequireAdmin>} />
         <Route path="servidores" element={<RequireAdmin><ServersPage /></RequireAdmin>} />
         <Route path="servidores/:id" element={<RequireAdmin><ServerDetailPage /></RequireAdmin>} />

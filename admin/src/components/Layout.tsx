@@ -3,9 +3,11 @@ import { PageLoader } from './ui';
 import { api } from '../api';
 import { useInterval } from '../hooks/useInterval';
 import { DEVICES_CHANGED_EVENT } from './DeviceIcon';
+import { UPDATES_CHANGED_EVENT } from '../pages/version/events';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   ArrowRightLeft,
+  GitBranch,
   Rocket,
   DatabaseBackup,
   ListOrdered,
@@ -46,7 +48,7 @@ interface NavItem {
   icon: ReactNode;
   adminOnly?: boolean;
   end?: boolean;
-  badge?: 'devices';
+  badge?: 'devices' | 'updates';
 }
 
 interface NavGroup {
@@ -101,6 +103,7 @@ const NAV: NavGroup[] = [
       { to: '/ajustes', label: 'Ajustes', icon: <SettingsIcon size={18} />, adminOnly: true },
       { to: '/copias-de-seguridad', label: 'Copias de seguridad', icon: <DatabaseBackup size={18} />, adminOnly: true },
       { to: '/actualizaciones-app', label: 'Actualizaciones de la app', icon: <Rocket size={18} />, adminOnly: true },
+      { to: '/version', label: 'Versión y actualizaciones', icon: <GitBranch size={18} />, adminOnly: true, badge: 'updates' },
       { to: '/registro', label: 'Registro de actividad', icon: <ScrollText size={18} />, adminOnly: true },
     ],
   },
@@ -113,6 +116,7 @@ export function Layout() {
   const location = useLocation();
 
   const [openAlerts, setOpenAlerts] = useState(0);
+  const [updatesPending, setUpdatesPending] = useState<{ panel: boolean; app: string | null }>({ panel: false, app: null });
 
   useEffect(() => {
     setOpen(false);
@@ -132,6 +136,25 @@ export function Layout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useInterval(loadAlerts, 60000);
+
+  // Punto en «Versión y actualizaciones» si hay actualización del panel o una versión de la app sin traer (solo admin; no consulta GitHub).
+  const loadUpdates = () => {
+    if (!isAdmin) return;
+    api.updates
+      .get()
+      .then((u) => {
+        const app = u.last?.app;
+        setUpdatesPending({ panel: u.last?.panel?.update_available === true, app: app?.latest && !app.imported ? app.latest.version_name : null });
+      })
+      .catch(() => undefined);
+  };
+  useEffect(() => {
+    loadUpdates();
+    window.addEventListener(UPDATES_CHANGED_EVENT, loadUpdates);
+    return () => window.removeEventListener(UPDATES_CHANGED_EVENT, loadUpdates);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin]);
+  useInterval(loadUpdates, 10 * 60000);
 
   return (
     <div className={`app ${open ? 'sidebar-open' : ''}`}>
@@ -161,6 +184,15 @@ export function Layout() {
                   >
                     {item.icon}
                     <span>{item.label}</span>
+                    {item.badge === 'updates' && (updatesPending.panel || updatesPending.app) && (
+                      <span
+                        className="nav-dot"
+                        title={[updatesPending.panel ? 'Hay una actualización del panel' : '', updatesPending.app ? `App ${updatesPending.app} en GitHub sin traer` : '']
+                          .filter(Boolean)
+                          .join(' · ')}
+                        aria-label="Actualización disponible"
+                      />
+                    )}
                     {item.badge === 'devices' && openAlerts > 0 && (
                       <span className="nav-badge" title={`${openAlerts} alerta(s) de dispositivos abiertas`}>
                         {openAlerts > 99 ? '99+' : openAlerts}

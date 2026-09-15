@@ -5,12 +5,14 @@ preparado en el proyecto o lo hace el script de publicación.
 
 ## 0. Antes de empezar: cómo se reparte la app
 
+Mientras no se publique en Play, **todos los equipos (celulares incluidos) usan el APK Portal** y se actualizan desde el portal.
+
 La app tiene dos versiones que son **la misma app** (mismo paquete `com.iptvplayer.app` y misma firma):
 
 | Versión | Para | Cómo se actualiza |
 |---|---|---|
 | **Play** (`.aab`) | Celulares y Android TV con Play Store | Google Play |
-| **Portal** (`.apk`) | TV box de la empresa y equipos sin Play Store | Desde el portal: *Actualizaciones de la app* |
+| **Portal** (`.apk`) | Celulares, TV box y Android TV que instalan el APK (hoy: todos los equipos) | Desde el portal: *Actualizaciones de la app* |
 
 Google no permite que una app bajada de Play se actualice por fuera de Play, por eso la versión Play no trae el
 actualizador y la versión Portal sí.
