@@ -291,8 +291,15 @@ if ($Portal) {
 function Get-GitHubToken {
     if ($env:GITHUB_TOKEN) { return $env:GITHUB_TOKEN }
     # La sesión que guardó Git Credential Manager al hacer git push (puede abrir la ventana de GitHub).
-    $request = "protocol=https`nhost=github.com`n`n"
-    $out = $request | & git credential fill 2>$null
+    # La petición va por un archivo: al redirigir la salida, PowerShell 5.1 antepone un BOM a lo que
+    # envía por tubería y git la rechaza ("missing protocol field").
+    $tmp = [IO.Path]::GetTempFileName()
+    try {
+        [IO.File]::WriteAllText($tmp, "protocol=https`nhost=github.com`n`n", (New-Object Text.UTF8Encoding $false))
+        $out = cmd /c "git credential fill < ""$tmp"" 2>nul"
+    } finally {
+        Remove-Item -LiteralPath $tmp -ErrorAction SilentlyContinue
+    }
     foreach ($line in @($out)) {
         if ($line -like 'password=*') { return $line.Substring(9) }
     }
