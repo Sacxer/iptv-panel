@@ -1,0 +1,38 @@
+# Uso: cp server/.env.example .env  (ajusta ADMIN_PASSWORD y DB_PASSWORD)  →  docker compose up -d --build
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: iptv
+      POSTGRES_USER: iptv
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD en .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iptv"]
+      interval: 5s
+      retries: 10
+
+  portal:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DB_CLIENT: pg
+      DATABASE_URL: postgres://iptv:${DB_PASSWORD}@db:5432/iptv
+      PORT: 8080
+      EXTRA_PORTS: 25461
+    ports:
+      - "8080:8080"
+      - "25461:25461"
+      - "25460:25460/udp" # descubrimiento en red local para la app
+    volumes:
+      - portaldata:/app/server/data
+
+volumes:
+  pgdata:
+  portaldata:

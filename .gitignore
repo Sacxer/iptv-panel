@@ -1,0 +1,33 @@
+# Dependencias y compilados
+node_modules/
+admin/dist/
+app/build/
+app/.dart_tool/
+tv/dist/
+*.log
+
+# Datos de cada servidor: NUNCA al repositorio (base de datos, backups, APK subidos, guía EPG)
+server/data/
+*.db
+*.db-shm
+*.db-wal
+*.iptvbak
+
+# Contraseñas y configuración local
+server/.env
+.env
+.claude/
+
+# Firma de la app Android (guárdala aparte, fuera de GitHub)
+app/android/key.properties
+app/android/keystore/
+*.jks
+*.keystore
+clave-play*.zip
+*.pem
+
+# Sistema / editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

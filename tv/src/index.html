@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IPTV Player</title>
+  <link rel="stylesheet" href="css/app.css">
+  <!-- Tizen: API de AVPlay (en webOS / navegador simplemente no carga) -->
+  <script src="$WEBAPIS/webapis/webapis.js"></script>
+</head>
+<body>
+  <!-- Capa de vídeo: debajo de la interfaz -->
+  <div id="video-layer" class="fullscreen">
+    <object id="av-player" type="application/avplayer"></object>
+    <video id="video" preload="auto" playsinline></video>
+  </div>
+
+  <!-- Interfaz diseñada a 1920x1080 y escalada según el ancho de la ventana -->
+  <div id="app">
+    <div id="screens"></div>
+    <div id="ticker" class="ticker hidden"><div class="ticker-track"><span class="ticker-text"></span></div></div>
+    <div id="dialogs"></div>
+    <div id="toast" class="toast hidden"></div>
+  </div>
+
+  <!-- Librerías opcionales para navegador de escritorio (MSE). Si faltan, la app funciona igual. -->
+  <script src="lib/hls.min.js"></script>
+  <script src="lib/mpegts.js"></script>
+
+  <script src="js/polyfills.js"></script>
+  <script src="js/util.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/http.js"></script>
+  <script src="js/m3u.js"></script>
+  <script src="js/xtream.js"></script>
+  <script src="js/source.js"></script>
+  <script src="js/portal.js"></script>
+  <script src="js/keys.js"></script>
+  <script src="js/focus.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/ui/components.js"></script>
+  <script src="js/ui/dialog.js"></script>
+  <script src="js/ui/login.js"></script>
+  <script src="js/ui/loading.js"></script>
+  <script src="js/ui/shell.js"></script>
+  <script src="js/ui/live.js"></script>
+  <script src="js/ui/vod.js"></script>
+  <script src="js/ui/series.js"></script>
+  <script src="js/ui/lists.js"></script>
+  <script src="js/ui/search.js"></script>
+  <script src="js/ui/account.js"></script>
+  <script src="js/ui/messages.js"></script>
+  <script src="js/ui/notices.js"></script>
+  <script src="js/ui/block.js"></script>
+  <script src="js/ui/playerui.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
