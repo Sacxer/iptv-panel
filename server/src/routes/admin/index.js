@@ -13,6 +13,7 @@ import integrations from './integrations.js';
 import astra from './astra.js';
 import backups, { backupPublicRouter } from './backups.js';
 import appReleases from './appReleases.js';
+import updates from './updates.js';
 import epg from './epg.js';
 import servers from './servers.js';
 import reminders from './reminders.js';
@@ -34,6 +35,7 @@ router.use(astra);
 router.use(epg);
 router.use(backups);
 router.use(appReleases);
+router.use(updates);
 router.use(content);
 router.use(communications);
 

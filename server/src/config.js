@@ -8,6 +8,15 @@ export const ROOT_DIR = path.resolve(here, '..');
 const envFile = path.join(ROOT_DIR, '.env');
 if (fs.existsSync(envFile)) process.loadEnvFile(envFile);
 
+/** Versión del portal (package.json) y de dónde se instaló (commit de GitHub que deja el instalador). */
+function readJson(file) {
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
 const list = (v) => (v || '').split(',').map((s) => s.trim()).filter(Boolean);
 
 export const config = {
@@ -29,7 +38,14 @@ export const config = {
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'iptv',
   },
-  version: '1.0.0',
+  version: readJson(path.join(ROOT_DIR, 'package.json'))?.version || '0.0.0',
+  buildInfoFile: process.env.BUILD_INFO_FILE || path.join(ROOT_DIR, 'build-info.json'),
+  github: {
+    // Repositorio de donde salen las actualizaciones del panel y de la app (se puede cambiar en Ajustes).
+    defaultRepo: process.env.UPDATES_REPO || 'Sacxer/iptv-panel',
+    apiUrl: (process.env.GITHUB_API_URL || 'https://api.github.com').replace(/\/+$/, ''),
+    token: process.env.GITHUB_TOKEN || '', // solo si el repositorio es privado
+  },
   backupDir: process.env.BACKUP_DIR || path.join(ROOT_DIR, 'data', 'backups'),
   appReleasesDir: process.env.APP_RELEASES_DIR || path.join(ROOT_DIR, 'data', 'app-releases'),
   google: {

@@ -12,6 +12,7 @@ import { getSettings, publicSettings, saveSettings } from '../../lib/settings.js
 import { healthStatus, healthSummary } from '../../services/streamHealth.js';
 import { getMetrics } from '../../services/systemMetrics.js';
 import { backupOverview } from '../../services/backup.js';
+import { currentBuild, lastCheck } from '../../services/githubUpdates.js';
 import {
   detectPublicIp, listListeningPorts, listNetworkPorts, publicBaseUrl, suggestPublicUrls,
 } from '../../services/network.js';
@@ -120,6 +121,16 @@ systemRouter.get('/dashboard', async (req, res) => {
     ),
     expiring_soon: await serializeUsers(expiringRows),
     backups: isReseller(req) ? null : await backupOverview(),
+    updates: isReseller(req) ? null : (() => {
+      const last = lastCheck();
+      return {
+        version: currentBuild().version,
+        checked_at: last?.checked_at || null,
+        panel_update_available: last?.panel?.update_available ?? null,
+        app_latest: last?.app?.latest?.version_name || null,
+        app_update_pending: Boolean(last?.app?.latest && !last?.app?.imported),
+      };
+    })(),
     recent_logs: isReseller(req) ? [] : (await db('logs').orderBy('id', 'desc').limit(6)).map(serializeLog),
   });
 });

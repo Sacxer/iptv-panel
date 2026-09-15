@@ -61,6 +61,15 @@ export const DEFAULT_SETTINGS = {
   // Avisos
   notices_carousel_enabled: true,
   notices_carousel_seconds: 8,
+  // Actualizaciones desde GitHub (panel y app)
+  updates: {
+    github_repo: '', // vacío = el del instalador o el predeterminado
+    branch: '', // vacío = la rama instalada o "main"
+    check_enabled: true,
+    check_hours: 6,
+    auto_import_app: false, // traer sola cada versión nueva de la app (queda en borrador)
+    auto_publish_app: false, // y además publicarla para los equipos
+  },
   // Datos públicos de la empresa (política de privacidad, ficha de Google Play y soporte en la app)
   company_name: '',
   app_name: 'IPTV Player',
@@ -114,6 +123,7 @@ export async function getSettings() {
     fields: { ...DEFAULT_SETTINGS.billing_integration.fields, ...(bi.fields || {}) },
     status_map: { ...DEFAULT_SETTINGS.billing_integration.status_map, ...(bi.status_map || {}) },
   };
+  cache.updates = { ...DEFAULT_SETTINGS.updates, ...(stored.updates || {}) };
   const bk = stored.backup || {};
   cache.backup = {
     ...DEFAULT_SETTINGS.backup,
@@ -133,7 +143,9 @@ export async function saveSettings(patch) {
   const next = { ...current };
   for (const [key, value] of Object.entries(patch)) {
     if (!(key in DEFAULT_SETTINGS) || value === undefined) continue;
-    if (key === 'backup') {
+    if (key === 'updates') {
+      next.updates = { ...current.updates, ...value };
+    } else if (key === 'backup') {
       next.backup = { ...current.backup, ...value, google_drive: { ...current.backup.google_drive, ...(value.google_drive || {}) } };
     } else {
       next[key] = key === 'xtream_db' || key === 'billing_integration' ? { ...current[key], ...value } : value;

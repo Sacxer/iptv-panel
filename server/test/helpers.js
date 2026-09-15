@@ -8,6 +8,8 @@ export async function startTestServer() {
   process.env.DB_FILE = path.join(tmp, 'test.db');
   process.env.BACKUP_DIR = path.join(tmp, 'backups'); // nunca la carpeta real de backups
   process.env.APP_RELEASES_DIR = path.join(tmp, 'app-releases');
+  process.env.UPDATES_CHECK = process.env.UPDATES_CHECK || 'false'; // sin consultas a GitHub en pruebas
+  process.env.BUILD_INFO_FILE = process.env.BUILD_INFO_FILE || path.join(tmp, 'build-info.json');
   process.env.ADMIN_PASSWORD = 'admin12345';
   process.env.JWT_SECRET = 'test-secret';
   process.env.ADMIN_DIST = path.join(tmp, 'no-admin');

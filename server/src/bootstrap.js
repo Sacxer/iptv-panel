@@ -11,6 +11,7 @@ import { startDeviceMonitor } from './services/devices.js';
 import { startReminderScheduler } from './services/reminders.js';
 import { startAstraScheduler } from './services/astra.js';
 import { startEpgScheduler } from './services/epg.js';
+import { startUpdatesScheduler } from './services/githubUpdates.js';
 import { markOfflineServers } from './services/nodes.js';
 import { startHealthMonitor } from './services/streamHealth.js';
 import { startMetricsSampler } from './services/systemMetrics.js';
@@ -45,7 +46,8 @@ export async function bootstrap({ quiet = false } = {}) {
     markOfflineServers().catch(() => {});
   }, 30_000);
   timer.unref();
-  const stops = [startDeviceMonitor(), startMetricsSampler(), startHealthMonitor(), startBillingScheduler(), startReminderScheduler(), startAstraScheduler(), startEpgScheduler(), startBackupScheduler()];
+  const stops = [startDeviceMonitor(), startMetricsSampler(), startHealthMonitor(), startBillingScheduler(), startReminderScheduler(), startAstraScheduler(), startEpgScheduler(), startBackupScheduler(),
+    ...(process.env.UPDATES_CHECK === 'false' ? [] : [startUpdatesScheduler()])];
   return () => {
     clearInterval(timer);
     stops.forEach((stop) => stop());

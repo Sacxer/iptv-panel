@@ -663,6 +663,33 @@ Objeto **AppRelease**: `{"id","package_name","version_name","version_code","chan
 
 En Ajustes (`GET/PUT /settings`): `company_name`, `app_name` ("IPTV Player"), `support_email`, `support_phone`.
 
+### Versión y actualizaciones desde GitHub (solo admin)
+El instalador guarda de qué commit se instaló (`server/build-info.json`: `{"commit","branch","repo","installed_at"}`); en desarrollo se lee
+del repositorio git local. Repositorio por defecto `Sacxer/iptv-panel` (`UPDATES_REPO`); si es privado, `GITHUB_TOKEN` en el `.env`.
+
+- **Panel**: compara el commit instalado con la rama en GitHub. Actualizar = volver a ejecutar la línea de instalación en el servidor.
+- **App**: cada versión es un *Release* de GitHub con etiqueta `app-v<versión>` (p. ej. `app-v1.0.2`) y los APK adjuntos
+  (`*armeabi-v7a*.apk`, `*arm64-v8a*.apk`, `*x86_64*.apk` o universal). Los marcados como *pre-release* son beta; los borradores se ignoran.
+  Al importar se descargan los APK, se comprueba la huella SHA-256 que publica GitHub y quedan en *Actualizaciones de la app*
+  (en borrador salvo que se pida publicar o esté activado `auto_publish_app`). Las notas del Release pasan a las novedades.
+
+- `GET /updates` → `{"current":{"version","commit","branch","repo","installed_at","source":"installer|git|unknown","node"},
+  "settings":{"github_repo","branch","check_enabled","check_hours","auto_import_app","auto_publish_app"},"default_repo","checking","importing",
+  "last":{"checked_at","repo","branch","error",
+  "panel":{"current_version","current_commit","latest_version","latest_commit","latest_message","latest_date","update_available":true|false|null,
+  "commits_behind","changes":[{"sha","message","date"}],"install_command","compare_url"},
+  "app":{"latest":{"tag","version_name","name","notes","prerelease","published_at","url","assets":[{"name","size","abi","sha256","download_url"}]}|null,
+  "beta":{…}|null,"imported":bool,"release_id","published":bool}}|null}`
+  (`update_available: null` = no se sabe de qué commit se instaló)
+- `POST /updates/check` → consulta GitHub ahora y devuelve lo mismo que `GET /updates`. 429 si GitHub limitó las consultas de esta IP
+  (60 por hora sin token); se conserva el último resultado bueno con `last.error`.
+- `POST /updates/app/import` `{"tag?":"app-v1.0.2","publish?":bool}` (por defecto la última estable) →
+  `{"tag","version_name","release_id","published","files":[{"name","abi","version_code","replaced","warnings"}|{"name","error"}],"overview":{…}}`
+- `PUT /updates/settings` `{"github_repo":"usuario/repo"|"","branch":"","check_enabled","check_hours":1-168,"auto_import_app","auto_publish_app"}`
+- Automático: revisa cada `check_hours` (primera revisión 2 min después de arrancar; `UPDATES_CHECK=false` lo apaga); con `auto_import_app`
+  importa sola la versión nueva de la app.
+- En `GET /dashboard`: `updates: {version, checked_at, panel_update_available, app_latest, app_update_pending}`.
+
 ### Registro de actividad (solo admin)
 Objeto **Log**: `{"id","admin_id","admin_username","action","entity","entity_id","details","created_at"}`
 - `GET /logs?page=&limit=`

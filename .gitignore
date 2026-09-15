@@ -31,3 +31,6 @@ clave-play*.zip
 Thumbs.db
 .idea/
 .vscode/
+
+# Versión instalada (la escribe el instalador en cada servidor)
+server/build-info.json

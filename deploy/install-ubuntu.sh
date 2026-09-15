@@ -127,6 +127,14 @@ tar -C "$SRC_DIR" \
   --exclude='server/data' --exclude='server/.env' --exclude='node_modules' --exclude='admin/dist' \
   -cf - server admin docs | tar -C "$APP_DIR" -xf -
 cp "$SRC_DIR/deploy/install-ubuntu.sh" "$APP_DIR/install-ubuntu.sh" 2>/dev/null || true
+# De qué versión de GitHub se instaló: el panel lo compara para avisar de actualizaciones.
+if command -v git >/dev/null && git -C "$SRC_DIR" rev-parse HEAD >/dev/null 2>&1; then
+  B_COMMIT="$(git -C "$SRC_DIR" rev-parse HEAD)"
+  B_BRANCH="$(git -C "$SRC_DIR" rev-parse --abbrev-ref HEAD)"
+  B_REPO="$(git -C "$SRC_DIR" remote get-url origin 2>/dev/null | sed -E 's#^[a-z]+://([^@/]*@)?github\.com/##; s#^git@github\.com:##; s#\.git$##')"
+  printf '{"commit":"%s","branch":"%s","repo":"%s","installed_at":%s}
+' "$B_COMMIT" "$B_BRANCH" "$B_REPO" "$(date +%s)" > "$APP_DIR/server/build-info.json"
+fi
 
 step "Compilando el panel"
 cd "$APP_DIR/admin" && npm ci --no-audit --no-fund && npm run build && rm -rf node_modules
