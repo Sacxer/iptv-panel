@@ -89,7 +89,7 @@ export function detectDevice(userAgent, headers = {}) {
     app: header(headers, 'x-app-name') || '',
     appVersion: header(headers, 'x-app-version').slice(0, 32),
     appBuild: /^\d{1,10}$/.test(header(headers, 'x-app-build')) ? Number(header(headers, 'x-app-build')) : null,
-    appDistribution: ['play', 'portal'].includes(header(headers, 'x-app-distribution').toLowerCase()) ? header(headers, 'x-app-distribution').toLowerCase() : '',
+    appDistribution: ['play', 'portal', 'tizen', 'webos'].includes(header(headers, 'x-app-distribution').toLowerCase()) ? header(headers, 'x-app-distribution').toLowerCase() : '',
     uid: header(headers, 'x-device-id'),
     mac: header(headers, 'x-device-mac').toUpperCase(),
     // high: el User-Agent identifica el tipo de equipo; low: solo nombra la app o el reproductor (VLC, okhttp…)

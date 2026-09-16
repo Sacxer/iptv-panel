@@ -134,7 +134,7 @@ Sin credenciales (funciona antes de iniciar sesión o con la cuenta cortada).
   La app debe comprobar el `sha256` antes de instalar.
 
 Cabeceras que la app envía en todas las peticiones (además de `X-Device-*`): `X-App-Version: 1.0.1`, `X-App-Build: 2003`,
-`X-App-Distribution: play|portal`. Se guardan en el dispositivo (`app_version`, `app_build`, `app_distribution`).
+`X-App-Distribution: play|portal|tizen|webos` (tizen/webos: app de TV de las tiendas de Samsung/LG). Se guardan en el dispositivo (`app_version`, `app_build`, `app_distribution`).
 
 ### Páginas públicas para las tiendas
 - `GET /privacidad` — política de privacidad (HTML) con `company_name`, `app_name`, `support_email`, `support_phone` de Ajustes.
