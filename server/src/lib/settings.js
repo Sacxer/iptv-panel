@@ -10,8 +10,10 @@ export const DEFAULT_SETTINGS = {
   epg_url: '',
   timezone: 'UTC',
   allow_all_without_package: true,
+  // Puertos para clientes (Xtream Codes / M3U). Vacío = EXTRA_PORTS del .env.
+  client_ports: [],
   connection_timeout_seconds: 60,
-  xtream_db: { host: '', port: 3306, user: '', password: '', database: 'xtream_iptvpro' },
+  xtream_db: { host: '', port: 3306, user: '', password: '', database: 'xtream_iptvpro', broadcast_port: null },
   // Dispositivos
   device_online_minutes: 10,
   device_inactive_days: 30,
@@ -101,7 +103,7 @@ export const DEFAULT_SETTINGS = {
 };
 
 /** Claves de ajustes propias de este servidor: no se exportan en los backups ni se pisan al restaurar. */
-export const PRESERVED_SETTING_KEYS = ['backup', 'jwt_secret'];
+export const PRESERVED_SETTING_KEYS = ['backup', 'jwt_secret', 'client_ports'];
 
 let cache = null;
 

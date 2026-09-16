@@ -1,0 +1,109 @@
+// Puertos del portal: ver cuáles están abiertos y cambiar los de clientes sin reiniciar
+// (p. ej. pasar al 25461 o al 80 después de apagar XtreamUI / XUI.one).
+import { execFile } from 'node:child_process';
+import fs from 'node:fs';
+import { Router } from 'express';
+import { config } from '../../config.js';
+import { adminOnly } from '../../lib/auth.js';
+import { logAction } from '../../lib/log.js';
+import { getSettings, saveSettings } from '../../lib/settings.js';
+import { HttpError, bool, int } from '../../lib/util.js';
+import {
+  applyClientPorts, configuredClientPorts, ensureApp, listenerStatus, movePublicUrl, probePort,
+} from '../../services/listeners.js';
+import { DISCOVERY_PORT } from '../../services/discovery.js';
+
+// Ayudante que deja el instalador: abre un puerto TCP en ufw (sudo sin contraseña solo para este script).
+const FIREWALL_HELPER = process.env.FIREWALL_HELPER || '/usr/local/sbin/iptv-firewall';
+const RESERVED = new Set([22, 25, 53, 3306, 5432]);
+
+const router = Router();
+router.use('/system/ports', adminOnly);
+
+function xtreamOnServer() {
+  if (fs.existsSync('/home/xtreamcodes/iptv_xtream_codes')) return 'XtreamUI';
+  if (fs.existsSync('/home/xui')) return 'XUI.one';
+  return null;
+}
+
+async function overview() {
+  const settings = await getSettings();
+  const xtream = xtreamOnServer();
+  const original = Number(settings.xtream_db?.broadcast_port) || null;
+  return {
+    panel_port: config.port,
+    client_ports: await configuredClientPorts(),
+    source: settings.client_ports?.length ? 'panel' : 'env',
+    listeners: listenerStatus(),
+    discovery_port: DISCOVERY_PORT,
+    public_url: settings.public_url || '',
+    firewall_helper: fs.existsSync(FIREWALL_HELPER),
+    xtream: {
+      on_server: xtream,
+      migrated_from: settings.xtream_db?.host ? 'XtreamUI' : null,
+      // Puerto que usaban los clientes en XtreamUI/XUI.one: el recomendado para que no cambien nada.
+      suggested_port: original || (xtream === 'XUI.one' ? 80 : settings.xtream_db?.host || xtream ? 25461 : null),
+      original_port: original,
+    },
+  };
+}
+
+function openFirewall(port) {
+  return new Promise((resolve) => {
+    if (!fs.existsSync(FIREWALL_HELPER)) {
+      resolve({ port, ok: false, manual: `sudo ufw allow ${port}/tcp` });
+      return;
+    }
+    execFile('sudo', ['-n', FIREWALL_HELPER, 'allow', String(port)], { timeout: 15_000 }, (err, stdout) => {
+      if (err) resolve({ port, ok: false, error: err.message.split('\n')[0], manual: `sudo ufw allow ${port}/tcp` });
+      else resolve({ port, ok: true, detail: String(stdout).trim() });
+    });
+  });
+}
+
+function parsePorts(list) {
+  if (!Array.isArray(list)) throw new HttpError(400, 'Envía la lista de puertos para clientes');
+  const ports = [...new Set(list.map((p) => int(p, NaN)))];
+  if (!ports.length) throw new HttpError(400, 'Deja al menos un puerto para los clientes');
+  if (ports.length > 10) throw new HttpError(400, 'Máximo 10 puertos para clientes');
+  for (const p of ports) {
+    if (!Number.isInteger(p) || p < 1 || p > 65535) throw new HttpError(400, `Puerto no válido: ${p}`);
+    if (p === config.port) throw new HttpError(400, `El ${p} es el puerto del panel; ya atiende a los clientes`);
+    if (RESERVED.has(p)) throw new HttpError(400, `El ${p} está reservado para otro servicio (SSH, correo, DNS o bases de datos)`);
+  }
+  return ports;
+}
+
+router.get('/system/ports', async (_req, res) => res.json(await overview()));
+
+router.post('/system/ports/check', async (req, res) => {
+  ensureApp(req.app);
+  const port = int(req.body?.port, NaN);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new HttpError(400, 'Puerto no válido');
+  if (port === config.port) return res.json({ port, available: true, in_use_by_portal: true, panel: true });
+  res.json(await probePort(port));
+});
+
+router.put('/system/ports', async (req, res) => {
+  ensureApp(req.app);
+  const body = req.body || {};
+  const ports = parsePorts(body.client_ports);
+  const before = await configuredClientPorts();
+  const results = await applyClientPorts(ports);
+  await saveSettings({ client_ports: ports });
+
+  // URL para clientes: si su puerto deja de estar abierto, pasa al primero de la lista nueva.
+  let publicUrl = null;
+  if (body.update_public_url === undefined || bool(body.update_public_url)) {
+    publicUrl = await movePublicUrl(ports);
+  }
+
+  const opened = results.filter((r) => r.ok && !r.closed && !r.already).map((r) => r.port);
+  const firewall = [];
+  for (const p of opened) firewall.push(await openFirewall(p));
+
+  await logAction(req.admin, 'system.ports', 'settings', null, { before, after: ports, public_url: publicUrl });
+  res.json({ ...(await overview()), results, public_url_changed: publicUrl, firewall });
+});
+
+export default router;

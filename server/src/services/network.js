@@ -1,5 +1,6 @@
 // Red del servidor: interfaces (puertos de red) con sus IPs, puerta de enlace, puertos TCP a la escucha
 // y la URL que usan los clientes. Muchos servidores no tienen IP pública: se usa la IP de la interfaz principal.
+import { activeClientPorts, configuredClientPorts } from './listeners.js';
 import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -255,7 +256,7 @@ export async function listListeningPorts() {
       entries = await listenFromProc();
     }
   }
-  const portalPorts = new Set([config.port, ...config.extraPorts]);
+  const portalPorts = new Set([config.port, ...activeClientPorts()]);
   const seen = new Set();
   return entries
     .filter((e) => e.port > 0 && !seen.has(`${e.ip}|${e.port}`) && seen.add(`${e.ip}|${e.port}`))
@@ -305,7 +306,7 @@ export function rankAddresses(ports) {
 export async function suggestPublicUrls({ networkPorts = null, listening = null, external = false } = {}) {
   const ports = networkPorts || await listNetworkPorts();
   const tcp = listening || await listListeningPorts();
-  const portalPorts = [...new Set([config.port, ...config.extraPorts])];
+  const portalPorts = [...new Set([config.port, ...activeClientPorts()])];
   const candidatePorts = [...portalPorts];
   if (tcp.some((p) => p.port === 80) && !candidatePorts.includes(80)) candidatePorts.push(80);
   const weight = (port) => (port === 25461 ? 0 : port === 80 ? 1 : 2);
@@ -356,7 +357,7 @@ export async function publicBaseUrl(req) {
   if (host && hostname !== 'localhost' && classifyIp(hostname) !== 'loopback') return `${req.protocol}://${host}`;
   const best = rankAddresses(await listNetworkPorts())[0];
   if (best) {
-    const port = config.extraPorts.includes(25461) ? 25461 : config.port;
+    const port = activeClientPorts()[0] || config.port;
     return urlFor(best.address, port);
   }
   return host ? `${req.protocol}://${host}` : `http://localhost:${config.port}`;
@@ -374,7 +375,7 @@ export async function autoConfigurePublicUrl(saveSettings, log = console.log) {
   if (process.env.AUTO_PUBLIC_URL === 'false') return null;
   const best = rankAddresses(await listNetworkPorts()).find((a) => a.family === 'IPv4');
   if (!best) return null;
-  const url = urlFor(best.address, config.extraPorts.includes(25461) ? 25461 : config.port);
+  const url = urlFor(best.address, (await configuredClientPorts())[0] || config.port);
   await saveSettings({ public_url: url });
   log(`URL para clientes configurada: ${url} (${best.interface_label} «${best.interface}»). Puedes cambiarla en Ajustes → Red.`);
   return url;

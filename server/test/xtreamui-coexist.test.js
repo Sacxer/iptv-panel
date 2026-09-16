@@ -78,13 +78,18 @@ describe('servidor con XtreamUI', () => {
     assert.match(await runScript('set-xtream-db.js', [], '{}'), /No se pudieron leer/);
   });
 
-  test('cambiar el puerto de clientes actualiza la URL guardada', async () => {
+  test('cambiar el puerto de clientes desde la consola actualiza los ajustes y la URL', async () => {
     await ctx.api('PUT', '/api/admin/settings', { public_url: 'http://10.0.0.5:25471' });
-    assert.match(await runScript('set-public-port.js', ['25471', '25461']), /25461/);
-    assert.equal(JSON.parse((await ctx.db('settings').where({ key: 'public_url' }).first()).value), 'http://10.0.0.5:25461');
-    assert.match(await runScript('set-public-port.js', ['25471', '25461']), /no se cambió/);
+    const out = await runScript('set-client-ports.js', ['25461']);
+    assert.match(out, /-> 25461/);
+    assert.match(out, /http:\/\/10\.0\.0\.5:25461/);
+    const read = async (key) => JSON.parse((await ctx.db('settings').where({ key }).first()).value);
+    assert.deepEqual(await read('client_ports'), [25461]);
+    assert.equal(await read('public_url'), 'http://10.0.0.5:25461');
+    assert.match(await runScript('set-client-ports.js', ['25461,80']), /no cambió/, 'el 25461 sigue abierto');
     await ctx.api('PUT', '/api/admin/settings', { public_url: 'https://tv.midominio.com' });
-    assert.match(await runScript('set-public-port.js', ['25461', '8080']), /no se cambió/);
+    assert.match(await runScript('set-client-ports.js', ['8081']), /no cambió/);
+    await assert.rejects(runScript('set-client-ports.js', ['abc']));
   });
 });
 

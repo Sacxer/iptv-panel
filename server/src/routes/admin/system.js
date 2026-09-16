@@ -12,6 +12,7 @@ import { getSettings, publicSettings, saveSettings } from '../../lib/settings.js
 import { healthStatus, healthSummary } from '../../services/streamHealth.js';
 import { getMetrics } from '../../services/systemMetrics.js';
 import { backupOverview } from '../../services/backup.js';
+import { activeClientPorts } from '../../services/listeners.js';
 import { currentBuild, lastCheck } from '../../services/githubUpdates.js';
 import {
   detectPublicIp, listListeningPorts, listNetworkPorts, publicBaseUrl, suggestPublicUrls,
@@ -317,7 +318,7 @@ systemRouter.get('/system/network', adminOnly, async (req, res) => {
     network_ports: networkPorts,
     public_ip: external ? detected : null,
     listening,
-    portal_ports: [...new Set([appConfig.port, ...appConfig.extraPorts])],
+    portal_ports: [...new Set([appConfig.port, ...activeClientPorts()])],
     suggestions,
     current_public_url: settings.public_url || null,
     effective_base_url: await publicBaseUrl(req),

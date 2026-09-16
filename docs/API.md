@@ -691,6 +691,25 @@ del repositorio git local. El repositorio es **automático**: el del instalador 
   importa sola la versión nueva de la app.
 - En `GET /dashboard`: `updates: {version, checked_at, panel_update_available, app_latest, app_update_pending}`.
 
+### Puertos del portal (solo admin)
+El puerto principal (`PORT`, panel y API; 8080) se fija al instalar. Los **puertos para clientes** (Xtream Codes / M3U; por
+defecto `EXTRA_PORTS` del `.env`, p. ej. 25461) se cambian desde el panel y se aplican **al instante, sin reiniciar**.
+Si un puerto está ocupado (p. ej. por XtreamUI) queda "en espera" y el portal lo abre solo cuando se libera (reintenta cada 30 s).
+El puerto principal también atiende a los clientes.
+
+- `GET /system/ports` → `{"panel_port":8080,"client_ports":[25461],"source":"panel|env","discovery_port":25460,"public_url",
+  "listeners":[{"port","role":"panel|clients","status":"listening|waiting|error","error","since"}],"firewall_helper":bool,
+  "xtream":{"on_server":"XtreamUI|XUI.one|null","migrated_from","suggested_port","original_port"}}`
+  (`original_port`: el puerto HTTP que usaban los clientes en XtreamUI, leído al probar la conexión de migración;
+  `suggested_port`: el recomendado para que los clientes no cambien nada)
+- `POST /system/ports/check` `{"port"}` → `{"port","available":bool,"in_use_by_portal","error"}` (prueba sin quedarse con el puerto)
+- `PUT /system/ports` `{"client_ports":[25461,80],"update_public_url":true}` → lo mismo que GET más
+  `"results":[{"port","ok","error?","closed?","already?"}],"public_url_changed":"http://…"|null,"firewall":[{"port","ok","manual?","error?"}]`.
+  Máximo 10; no se permiten el puerto del panel ni 22, 25, 53, 3306, 5432. Si la URL para clientes usaba un puerto que se quitó,
+  pasa al primero de la lista. Los puertos nuevos se abren en ufw con el ayudante que deja el instalador
+  (`/usr/local/sbin/iptv-firewall`, vía sudo); si no está, `manual` trae el comando.
+- En el servidor: `sudo bash /opt/iptv/install-ubuntu.sh --set-clients-port 25461` hace lo mismo desde la consola.
+
 ### Registro de actividad (solo admin)
 Objeto **Log**: `{"id","admin_id","admin_username","action","entity","entity_id","details","created_at"}`
 - `GET /logs?page=&limit=`

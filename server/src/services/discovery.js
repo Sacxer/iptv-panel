@@ -5,6 +5,7 @@ import dgram from 'node:dgram';
 import os from 'node:os';
 import { config } from '../config.js';
 import { getSettings } from '../lib/settings.js';
+import { activeClientPorts } from './listeners.js';
 import { classifyIp } from './network.js';
 
 export const DISCOVERY_PORT = Number(process.env.DISCOVERY_PORT || 25460);
@@ -36,7 +37,7 @@ export function localAddressFor(remote, interfaces = os.networkInterfaces()) {
 /** Datos que se anuncian a la app. */
 export async function discoveryInfo(localAddress) {
   const settings = await getSettings();
-  const ports = [...new Set([config.port, ...config.extraPorts])];
+  const ports = [...new Set([config.port, ...activeClientPorts()])];
   return {
     type: 'iptv-portal',
     name: settings.server_name,

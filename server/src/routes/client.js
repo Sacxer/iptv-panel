@@ -12,6 +12,7 @@ import { clientIp } from '../lib/access.js';
 import { insertId } from '../db/index.js';
 import { renderPlaceholders } from '../services/reminders.js';
 import { checkUpdate, countDownload, releaseFile } from '../services/appReleases.js';
+import { activeClientPorts } from '../services/listeners.js';
 
 const router = Router();
 
@@ -46,7 +47,7 @@ router.get('/ping', async (req, res) => {
     version: config.version,
     url: `${req.protocol}://${req.get('host')}`,
     public_url: settings.public_url || null,
-    ports: [...new Set([config.port, ...config.extraPorts])],
+    ports: [...new Set([config.port, ...activeClientPorts()])],
   });
 });
 

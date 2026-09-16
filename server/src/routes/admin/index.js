@@ -14,6 +14,7 @@ import astra from './astra.js';
 import backups, { backupPublicRouter } from './backups.js';
 import appReleases from './appReleases.js';
 import updates from './updates.js';
+import ports from './ports.js';
 import epg from './epg.js';
 import servers from './servers.js';
 import reminders from './reminders.js';
@@ -36,6 +37,7 @@ router.use(epg);
 router.use(backups);
 router.use(appReleases);
 router.use(updates);
+router.use(ports);
 router.use(content);
 router.use(communications);
 
@@ -56,7 +58,7 @@ xtream.post('/test', async (req, res) => {
   };
   const result = await testXtream(conn);
   if (body.save !== false) {
-    await saveSettings({ xtream_db: conn });
+    await saveSettings({ xtream_db: { ...conn, broadcast_port: result.broadcast_port ?? saved.broadcast_port ?? null } });
   }
   await logAction(req.admin, 'xtream.test', 'xtream', null, { host: conn.host, counts: result.counts });
   res.json(result);

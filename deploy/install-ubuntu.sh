@@ -99,6 +99,12 @@ port_owner() {
   exe="$(readlink -f "/proc/$pid/exe" 2>/dev/null || true)"
   echo "${exe:-pid $pid}"
 }
+# ¿El puerto lo tiene el propio portal? (proceso del usuario del portal)
+port_is_ours() {
+  local pid
+  pid="$(ss -Hltnp 2>/dev/null | awk -v p=":$1" '$4 ~ p"$" {print $6}' | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2)"
+  [[ -n "$pid" && "$(ps -o user= -p "$pid" 2>/dev/null | tr -d ' ')" == "$APP_USER" ]]
+}
 first_free_port() {
   local p
   for p in "$@"; do port_busy "$p" || { echo "$p"; return 0; }; done
@@ -135,7 +141,7 @@ fi
 if [[ -n "$SET_CLIENTS_PORT" ]]; then
   if (( FRESH )); then echo "El portal no está instalado en $APP_DIR"; exit 1; fi
   OLD_PORT="$(env_get EXTRA_PORTS | cut -d, -f1)"
-  if [[ "$SET_CLIENTS_PORT" != "$OLD_PORT" ]] && port_busy "$SET_CLIENTS_PORT"; then
+  if port_busy "$SET_CLIENTS_PORT" && ! port_is_ours "$SET_CLIENTS_PORT"; then
     echo "El puerto $SET_CLIENTS_PORT lo está usando: $(port_owner "$SET_CLIENTS_PORT")."
     [[ -n "$XTREAM_KIND" ]] && echo "Apaga primero $XTREAM_KIND (y su inicio automático) cuando hayas terminado la migración."
     exit 1
@@ -145,9 +151,7 @@ if [[ -n "$SET_CLIENTS_PORT" ]]; then
   if [[ "$PUB" =~ ^(https?://[^/:]+):([0-9]+)$ && "${BASH_REMATCH[2]}" == "$OLD_PORT" ]]; then
     env_set PUBLIC_URL "${BASH_REMATCH[1]}:${SET_CLIENTS_PORT}"
   fi
-  if [[ -n "$OLD_PORT" && "$OLD_PORT" != "$SET_CLIENTS_PORT" ]]; then
-    (cd "$APP_DIR/server" && sudo -u "$APP_USER" node scripts/set-public-port.js "$OLD_PORT" "$SET_CLIENTS_PORT") || true
-  fi
+  (cd "$APP_DIR/server" && sudo -u "$APP_USER" node scripts/set-client-ports.js "$SET_CLIENTS_PORT") || true
   if (( FIREWALL )) && ufw_active; then ufw allow "${SET_CLIENTS_PORT}/tcp" >/dev/null; fi
   systemctl restart iptv-portal
   echo "Puerto de clientes: ${OLD_PORT:-?} -> ${SET_CLIENTS_PORT}. Portal reiniciado."
@@ -287,6 +291,31 @@ if [[ -n "$XTREAM_KIND" ]]; then
   fi
   XJSON=""
 fi
+
+step "Permisos del panel para el cortafuegos"
+# El panel puede abrir en ufw los puertos que se agreguen para clientes (solo eso, validado aquí).
+cat > /usr/local/sbin/iptv-firewall <<'HELPER'
+#!/bin/sh
+# Abre un puerto TCP en ufw para el Portal IPTV. Lo llama el panel con sudo. Uso: iptv-firewall allow <puerto>
+set -eu
+if [ "$#" -ne 2 ] || [ "$1" != "allow" ]; then echo "uso: iptv-firewall allow <puerto>" >&2; exit 2; fi
+case "$2" in ''|*[!0-9]*) echo "puerto no válido" >&2; exit 2 ;; esac
+if [ "$2" -lt 1 ] || [ "$2" -gt 65535 ]; then echo "puerto no válido" >&2; exit 2; fi
+if ! command -v ufw >/dev/null 2>&1 || ! ufw status | grep -q "Status: active"; then
+  echo "El cortafuegos no está activo: no hace falta abrir el puerto."
+  exit 0
+fi
+ufw allow "$2/tcp"
+HELPER
+chmod 755 /usr/local/sbin/iptv-firewall
+printf '%s ALL=(root) NOPASSWD: /usr/local/sbin/iptv-firewall
+' "$APP_USER" > /tmp/iptv-portal.sudoers
+if visudo -cf /tmp/iptv-portal.sudoers >/dev/null; then
+  install -m 440 /tmp/iptv-portal.sudoers /etc/sudoers.d/iptv-portal
+else
+  echo "Aviso: no se pudo configurar sudo para el cortafuegos; abre los puertos nuevos a mano (ufw allow N/tcp)."
+fi
+rm -f /tmp/iptv-portal.sudoers
 
 step "Servicio del portal"
 cat > /etc/systemd/system/iptv-portal.service <<UNIT

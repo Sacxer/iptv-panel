@@ -118,8 +118,18 @@ export async function testXtream(conn) {
     const typeMap = await streamTypeMap(my);
     const inList = (ids) => (ids.length ? ids.join(',') : '-1');
     const has = async (t) => Boolean(await columnsOf(my, t));
+    // Puerto HTTP que usan hoy los clientes (servidor principal de XtreamUI / XUI.one).
+    let broadcastPort = null;
+    for (const table of ['streaming_servers', 'servers']) {
+      const cols = await columnsOf(my, table);
+      if (!cols?.has('http_broadcast_port')) continue;
+      const [rows] = await my.query(`SELECT http_broadcast_port AS p FROM ${table}${cols.has('is_main') ? ' ORDER BY is_main DESC' : ''} LIMIT 1`);
+      broadcastPort = Number(rows[0]?.p) || null;
+      break;
+    }
     return {
       ok: true,
+      broadcast_port: broadcastPort,
       counts: {
         users: await scalar(my, 'SELECT COUNT(*) c FROM users'),
         resellers: (await has('reg_users')) ? await scalar(my, 'SELECT COUNT(*) c FROM reg_users') : 0,
