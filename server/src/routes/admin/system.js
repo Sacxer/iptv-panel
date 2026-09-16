@@ -12,7 +12,7 @@ import { getSettings, publicSettings, saveSettings } from '../../lib/settings.js
 import { healthStatus, healthSummary } from '../../services/streamHealth.js';
 import { getMetrics } from '../../services/systemMetrics.js';
 import { backupOverview } from '../../services/backup.js';
-import { activeClientPorts } from '../../services/listeners.js';
+import { activeClientPorts, toClientUrl } from '../../services/listeners.js';
 import { currentBuild, lastCheck } from '../../services/githubUpdates.js';
 import { interfaceOfUrl, localPorts } from '../../services/ipFollow.js';
 import {
@@ -243,7 +243,8 @@ systemRouter.put('/settings', adminOnly, async (req, res) => {
   const patch = {};
   if (body.server_name !== undefined) patch.server_name = String(body.server_name).slice(0, 100);
   if (body.public_url !== undefined) {
-    patch.public_url = String(body.public_url).trim().replace(/\/+$/, '');
+    // Si trae el puerto del panel y hay puerto de clientes, se usa el de clientes.
+    patch.public_url = toClientUrl(String(body.public_url).trim().replace(/\/+$/, ''));
     // Si es una IP de este servidor, la URL sigue a esa interfaz cuando la IP cambie.
     const iface = interfaceOfUrl(patch.public_url, localPorts());
     patch.public_url_interface = iface || '';

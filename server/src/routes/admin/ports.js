@@ -8,7 +8,7 @@ import { logAction } from '../../lib/log.js';
 import { getSettings, saveSettings } from '../../lib/settings.js';
 import { HttpError, bool, int } from '../../lib/util.js';
 import {
-  applyClientPorts, configuredClientPorts, currentPanelPort, ensureApp, listenerStatus, movePublicUrl, probePort,
+  applyClientPorts, configuredClientPorts, currentPanelPort, ensureApp, listenerStatus, movePublicUrl, normalizeStoredClientUrl, probePort,
 } from '../../services/listeners.js';
 import { DISCOVERY_PORT } from '../../services/discovery.js';
 
@@ -122,6 +122,7 @@ router.put('/system/ports', async (req, res) => {
   if (body.update_public_url === undefined || bool(body.update_public_url)) {
     publicUrl = await movePublicUrl(ports);
   }
+  publicUrl = (await normalizeStoredClientUrl()) || publicUrl;
 
   const opened = results.filter((r) => r.ok && !r.closed && !r.already).map((r) => r.port);
   const firewall = [];

@@ -1,7 +1,7 @@
 // Red del servidor: interfaces (puertos de red) con sus IPs, puerta de enlace, puertos TCP a la escucha
 // y la URL que usan los clientes. Muchos servidores no tienen IP pública: se usa la IP de la interfaz principal.
 import { interfaceOfUrl, localPorts } from './ipFollow.js';
-import { activeClientPorts, configuredClientPorts } from './listeners.js';
+import { activeClientPorts, configuredClientPorts, toClientUrl } from './listeners.js';
 import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -307,9 +307,10 @@ export function rankAddresses(ports) {
 export async function suggestPublicUrls({ networkPorts = null, listening = null, external = false } = {}) {
   const ports = networkPorts || await listNetworkPorts();
   const tcp = listening || await listListeningPorts();
-  const portalPorts = [...new Set([config.port, ...activeClientPorts()])];
-  const candidatePorts = [...portalPorts];
-  if (tcp.some((p) => p.port === 80) && !candidatePorts.includes(80)) candidatePorts.push(80);
+  // Con puertos de clientes abiertos solo se sugieren esos (el del panel y el 80 del proxy del panel no son para clientes).
+  const clientPorts = activeClientPorts();
+  const candidatePorts = clientPorts.length ? [...clientPorts] : [config.port];
+  if (!clientPorts.length && tcp.some((p) => p.port === 80) && !candidatePorts.includes(80)) candidatePorts.push(80);
   const weight = (port) => (port === 25461 ? 0 : port === 80 ? 1 : 2);
   candidatePorts.sort((a, b) => weight(a) - weight(b));
 
@@ -352,10 +353,11 @@ export async function suggestPublicUrls({ networkPorts = null, listening = null,
 /** URL base para enlaces del panel (M3U de clientes, instalación de nodos). Nunca localhost/127.0.0.1 si hay otra opción. */
 export async function publicBaseUrl(req) {
   const settings = await getSettings();
-  if (settings.public_url) return settings.public_url.replace(/\/+$/, '');
+  // Los enlaces para clientes usan el puerto de clientes, nunca el del panel.
+  if (settings.public_url) return toClientUrl(settings.public_url.replace(/\/+$/, ''));
   const host = req?.get?.('host') || '';
   const hostname = host.replace(/:\d+$/, '').replace(/^\[|\]$/g, '');
-  if (host && hostname !== 'localhost' && classifyIp(hostname) !== 'loopback') return `${req.protocol}://${host}`;
+  if (host && hostname !== 'localhost' && classifyIp(hostname) !== 'loopback') return toClientUrl(`${req.protocol}://${host}`);
   const best = rankAddresses(await listNetworkPorts())[0];
   if (best) {
     const port = activeClientPorts()[0] || config.port;

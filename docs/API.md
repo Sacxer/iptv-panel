@@ -720,6 +720,9 @@ apagada para no romper enlaces): con al menos un puerto de clientes abierto,
 - `PUT /system/ports` `{"separate_ports":true|false}` (solo eso) la activa o desactiva; al activarla, si la URL para clientes usa
   el puerto del panel pasa al primer puerto de clientes (`public_url_changed`). Requiere un puerto de clientes abierto.
 - El puerto de clientes nunca puede ser el del panel (400; también en `--set-clients-port`).
+- **Enlaces para clientes** (URL para clientes, M3U, Xtream, sugerencias de URL): si hay un puerto de clientes abierto nunca usan el
+  puerto del panel. Una URL guardada con el puerto del panel se corrige sola al arrancar, al guardar Ajustes o al cambiar los puertos
+  (se usa el primer puerto de clientes).
 - En `GET /system/ports`: `separate_ports`, `separation_active`.
 
 ### Arranque automático y cambio de IP (cortes de luz)

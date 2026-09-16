@@ -121,6 +121,7 @@ export async function startListeners(expressApp, { panelPort: port = config.port
   for (const r of results) {
     if (!r.ok) console.error(`El puerto ${r.port} no se pudo abrir (${r.error}). Se reintentará cada 30 s.`);
   }
+  await normalizeStoredClientUrl().catch(() => {});
   retryTimer = setInterval(async () => {
     for (const port of desiredClients) {
       const e = servers.get(port);
@@ -143,6 +144,27 @@ export async function movePublicUrl(ports) {
   if (!m || ports.includes(port) || port === panelPort) return null;
   const next = `${m[1]}:${ports[0]}${m[3] || ''}`;
   await saveSettings({ public_url: next });
+  return next;
+}
+
+/** Una URL para clientes nunca usa el puerto del panel si hay un puerto de clientes abierto. */
+export function toClientUrl(url) {
+  const clients = activeClientPorts();
+  if (!app || !clients.length || !url) return url;
+  const m = /^(https?):\/\/(\[[^\]]+\]|[^/:]+)(?::(\d+))?(\/.*)?$/i.exec(url);
+  if (!m) return url;
+  const port = m[3] ? Number(m[3]) : (m[1].toLowerCase() === 'https' ? 443 : 80);
+  if (port !== panelPort) return url;
+  return `${m[1]}://${m[2]}:${clients[0]}${m[4] || ''}`;
+}
+
+/** Corrige la URL para clientes guardada si apunta al puerto del panel. Devuelve la nueva o null. */
+export async function normalizeStoredClientUrl() {
+  const current = (await getSettings()).public_url || '';
+  const next = toClientUrl(current);
+  if (!current || next === current) return null;
+  await saveSettings({ public_url: next });
+  console.log(`URL para clientes: ${current} -> ${next} (el ${panelPort} es el puerto del panel)`);
   return next;
 }
 

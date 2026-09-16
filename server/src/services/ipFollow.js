@@ -69,6 +69,8 @@ export async function followPublicUrl({ interfaces, fullPorts } = {}) {
   const ports = fullPorts || (interfaces ? quick : await listNetworkPorts());
   const change = followUrl(s.public_url, ports, s.public_url_interface, rankAddresses);
   if (!change) return null;
+  const { toClientUrl } = await import('./listeners.js');
+  change.url = toClientUrl(change.url);
   await saveSettings({ public_url: change.url, public_url_interface: change.interface });
   await logAction(null, 'system.public_url_follow', 'settings', null, change);
   console.log(`La IP del servidor cambió (${change.from} → ${change.to}): URL para clientes ${change.url}`);

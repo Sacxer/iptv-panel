@@ -92,10 +92,21 @@ describe('separación de puertos', () => {
     assert.notEqual((await get(panel, '/api/client/ping')).status, 404);
     assert.equal((await get(client, '/api/admin/dashboard')).status, 401, 'sin separación el panel responde en todos');
 
-    await ctx.api('PUT', '/api/admin/settings', { public_url: `http://10.0.0.5:${panel}` });
+    const saved = (await ctx.api('PUT', '/api/admin/settings', { public_url: `http://10.0.0.5:${panel}` })).data;
+    assert.equal(saved.public_url, `http://10.0.0.5:${client}`, 'la URL para clientes no puede usar el puerto del panel');
     const on = (await ctx.api('PUT', '/api/admin/system/ports', { separate_ports: true })).data;
-    assert.equal(on.public_url_changed, `http://10.0.0.5:${client}`);
+    assert.equal(on.separate_ports, true);
     assert.equal((await get(panel, '/api/client/ping')).status, 404);
+
+    // Enlaces de un cliente pedidos desde el panel: usan el puerto de clientes.
+    const user = (await ctx.api('GET', '/api/admin/users?search=zz-sep')).data.data[0];
+    const token = (await ctx.api('POST', '/api/admin/auth/login', { username: 'admin', password: 'admin12345' })).data.token;
+    await ctx.api('PUT', '/api/admin/settings', { public_url: '' });
+    const links = await fetch(`http://127.0.0.1:${panel}/api/admin/users/${user.id}/m3u-url`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+    const server = new URL(links.xtream.server);
+    assert.equal(server.port, String(client), 'puerto de clientes, no el del panel');
+    assert.notEqual(server.hostname, 'localhost');
+    assert.ok(links.m3u_url.startsWith(`${links.xtream.server}/get.php`));
 
     const same = await ctx.api('PUT', '/api/admin/system/ports', { client_ports: [panel] });
     assert.equal(same.status, 400);
