@@ -1,0 +1,13 @@
+# Configuración real del operador (el modelo es operator.example.json)
+operator.json
+
+# Compilaciones y paquetes
+dist/
+*.wgt
+*.ipk
+
+# Medios de prueba generados (npm run test-media)
+test/media/
+
+# Certificados de Tizen / claves
+*.p12

@@ -56,6 +56,39 @@ describe('dispositivos sin duplicados', () => {
     assert.ok(list.some((d) => d.device_id === 'APP-XYZ'));
   });
 
+  test('app de televisor: el vídeo con ?did= es el mismo equipo y el latido acepta episodios', async () => {
+    const u = (await api('POST', '/api/admin/users', { username: 'casa-tv', password: 'casa1234' })).data;
+    const tvHeaders = {
+      'User-Agent': 'Mozilla/5.0 (SMART-TV; LINUX; Tizen 6.0) AppleWebKit/537.36 (KHTML, like Gecko) 76.0.3809.146/6.0 TV Safari/537.36',
+      'X-Device-Id': 'TV-ABC', 'X-Device-Type': 'smart_tv', 'X-Device-Brand': 'Samsung', 'X-Device-Model': 'UN50TU7000',
+      'X-App-Name': 'IPTV Player', 'X-App-Version': '1.0.0', 'X-App-Build': '1', 'X-App-Distribution': 'tizen',
+    };
+    await api('GET', '/api/client/info?username=casa-tv&password=casa1234', undefined, { headers: tvHeaders });
+    // El reproductor no envía cabeceras propias y su User-Agent parece de PC (navegador de escritorio).
+    const chrome = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36';
+    await api('GET', '/live/casa-tv/casa1234/999999.ts?did=TV-ABC', undefined, { headers: { 'User-Agent': chrome }, raw: true });
+    const list = await devicesOf(u.id);
+    assert.equal(list.length, 1, JSON.stringify(list.map((d) => [d.type, d.device_id, d.user_agent])));
+    assert.equal(list[0].type, 'smart_tv', 'el User-Agent del reproductor no cambia el tipo');
+    assert.equal(list[0].model, 'UN50TU7000');
+    assert.equal(list[0].last_activity, 'stream');
+    assert.equal(list[0].app_version, '1.0.0');
+    assert.equal(list[0].app_build, 1);
+    assert.equal(list[0].app_distribution, 'tizen');
+    const detail = (await api('GET', `/api/admin/devices/${list[0].id}`)).data;
+    assert.equal(detail.app_distribution, 'tizen');
+
+    const series = (await api('POST', '/api/admin/series', { name: 'zz-serie-tv' })).data;
+    const ep = (await api('POST', `/api/admin/series/${series.id}/episodes`, {
+      season: 1, episode_num: 1, name: 'Capítulo 1', source_url: 'http://127.0.0.1:9/ep1.mp4',
+    })).data;
+    const beat = await api('POST', '/api/client/playing', { username: 'casa-tv', password: 'casa1234', stream_id: ep.id }, { auth: false, headers: tvHeaders });
+    assert.equal(beat.status, 200, JSON.stringify(beat.data));
+    const conn = await db('connections').where({ id: beat.data.connection_id }).first();
+    assert.equal(conn.stream_type, 'episode');
+    await api('POST', '/api/client/stopped', { username: 'casa-tv', password: 'casa1234', connection_id: beat.data.connection_id }, { auth: false });
+  });
+
   test('seleccionar todos por filtro y acciones en lote', async () => {
     const t = Math.floor(Date.now() / 1000);
     const rows = Array.from({ length: 7 }, (_, i) => ({

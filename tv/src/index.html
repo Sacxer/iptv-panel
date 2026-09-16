@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>IPTV Player</title>
   <link rel="stylesheet" href="css/app.css">
-  <!-- Tizen: API de AVPlay (en webOS / navegador simplemente no carga) -->
+  <!-- Tizen: API de AVPlay y del televisor (en webOS / navegador simplemente no carga) -->
   <script src="$WEBAPIS/webapis/webapis.js"></script>
 </head>
 <body>
@@ -15,31 +15,39 @@
     <video id="video" preload="auto" playsinline></video>
   </div>
 
-  <!-- Interfaz diseñada a 1920x1080 y escalada según el ancho de la ventana -->
+  <!-- Interfaz diseñada a 1920x1080 y escalada según el tamaño de la ventana -->
   <div id="app">
     <div id="screens"></div>
     <div id="ticker" class="ticker hidden"><div class="ticker-track"><span class="ticker-text"></span></div></div>
+    <div id="netbar" class="netbar hidden"><span class="netbar-icon">!</span>Sin conexión a la red. Revise el cable de red o el Wi-Fi del televisor.</div>
     <div id="dialogs"></div>
     <div id="toast" class="toast hidden"></div>
   </div>
 
-  <!-- Librerías opcionales para navegador de escritorio (MSE). Si faltan, la app funciona igual. -->
+  <!-- Librerías para reproducir HLS / MPEG-TS con MSE (navegador y webOS). Si faltan, la app funciona igual. -->
   <script src="lib/hls.min.js"></script>
   <script src="lib/mpegts.js"></script>
 
   <script src="js/polyfills.js"></script>
+  <script src="js/config.js"></script>
   <script src="js/util.js"></script>
   <script src="js/storage.js"></script>
   <script src="js/http.js"></script>
+  <script src="js/device.js"></script>
+  <script src="js/lan.js"></script>
+  <script src="js/relocate.js"></script>
   <script src="js/m3u.js"></script>
   <script src="js/xtream.js"></script>
   <script src="js/source.js"></script>
+  <script src="js/session.js"></script>
   <script src="js/portal.js"></script>
   <script src="js/keys.js"></script>
   <script src="js/focus.js"></script>
   <script src="js/player.js"></script>
+  <script src="js/lifecycle.js"></script>
   <script src="js/ui/components.js"></script>
   <script src="js/ui/dialog.js"></script>
+  <script src="js/ui/finder.js"></script>
   <script src="js/ui/login.js"></script>
   <script src="js/ui/loading.js"></script>
   <script src="js/ui/shell.js"></script>

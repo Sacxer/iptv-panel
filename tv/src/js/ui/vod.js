@@ -86,7 +86,7 @@
         var idx = Math.max(0, U.findIndex(cats, function (c) { return c.id === last; }));
         this.cats.setItems(cats, idx);
         this.loadCategory(cats[idx], idx);
-        if (IPTV.screens.shell.current === kind && !IPTV.screens.shell.inSidebar()) { this.focusDefault(); }
+        if (IPTV.screens.shell.canFocusContent(kind)) { this.focusDefault(); }
       },
 
       favItems: function () {

@@ -69,6 +69,14 @@
 
   F.set = function (el, opts) {
     if (!el) { return; }
+    /* Foco pedido debajo de una capa superior (p. ej. con un diálogo abierto): se aplica al cerrarla */
+    var top = layers.length ? layers[layers.length - 1] : null;
+    if (top && !top.el.contains(el) && !(opts && opts.force)) {
+      var i;
+      for (i = layers.length - 2; i >= 0; i--) {
+        if (layers[i].el.contains(el)) { top.prev = el; return; }
+      }
+    }
     var prev = current;
     if (prev === el) {
       if (!el.classList.contains('focused')) { el.classList.add('focused'); }
@@ -242,4 +250,7 @@
     if (onFocus) { el.__onFocus = onFocus; }
     return el;
   };
-})(window);
+
+  /* Para pruebas: elección del candidato por rectángulos */
+  F._pick = pick;
+})(typeof window !== 'undefined' ? window : global);

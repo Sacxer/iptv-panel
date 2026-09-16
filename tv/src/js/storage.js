@@ -3,7 +3,9 @@
   'use strict';
   var IPTV = root.IPTV = root.IPTV || {};
   var U = IPTV.util;
-  var PREFIX = 'iptv.';
+  /* En desarrollo las dos variantes comparten origen: cada una guarda sus datos aparte */
+  var CFG = IPTV.config || {};
+  var PREFIX = 'iptv.' + (CFG.dev && CFG.variant ? CFG.variant + '.' : '');
   var memory = {};
 
   function ls() {
@@ -118,7 +120,8 @@
 
   S.setPosition = function (pid, item, t, d) {
     var map = S.get('pos.' + pid, {}), k = S.itemKey(item), keys;
-    if (!t || t < 30 || (d && d - t < 60)) { delete map[k]; }
+    /* Menos de 30 s vistos o casi terminada (falta menos de 60 s o del 5 %): no se ofrece continuar */
+    if (!t || t < 30 || (d && d - t < Math.min(60, d * 0.05))) { delete map[k]; }
     else { map[k] = { t: Math.floor(t), d: Math.floor(d || 0), ts: Date.now() }; }
     keys = Object.keys(map);
     if (keys.length > MAX_POS) {

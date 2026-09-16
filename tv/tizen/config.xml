@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Plantilla de config.xml para Samsung Tizen TV. `npm run build tizen` reemplaza los valores {{…}}
+  con tv/operator.json y la versión de tv/package.json, y copia el resultado en dist/tizen-*/config.xml.
+
+  - required_version 2.3: instalable en televisores Samsung desde 2015 (operator.json → tizen.requiredVersion).
+  - Privilegios: solo los que usa la app (Samsung rechaza privilegios sin uso):
+      internet           → peticiones al portal / servidor Xtream y reproducción
+      tv.inputdevice     → registrar teclas de colores, multimedia, canales y números
+      network.public     → webapis.network (IP, máscara y puerta de enlace para buscar el portal; estado de la red)
+      productinfo        → webapis.productinfo (modelo del televisor para el portal)
+    AVPlay no necesita privilegio desde los modelos 2015; tizen.systeminfo (red) tampoco.
+  - access origin="*": el servidor del operador puede cambiar de IP y los canales vienen de varias fuentes.
+-->
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets" id="{{WIDGET_ID}}" version="{{VERSION}}" viewmodes="maximized">
+    <tizen:application id="{{TIZEN_ID}}" package="{{TIZEN_PACKAGE}}" required_version="{{REQUIRED_VERSION}}"/>
+    <content src="index.html"/>
+    <feature name="http://tizen.org/feature/screen.size.normal.1080.1920"/>
+    <icon src="icon.png"/>
+    <name>{{APP_NAME}}</name>
+    <description>{{DESCRIPTION}}</description>
+    {{AUTHOR}}
+    <access origin="*" subdomains="true"/>
+    <tizen:privilege name="http://tizen.org/privilege/internet"/>
+    <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
+    <tizen:privilege name="http://developer.samsung.com/privilege/network.public"/>
+    <tizen:privilege name="http://developer.samsung.com/privilege/productinfo"/>
+    <tizen:profile name="tv-samsung"/>
+    <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="disable" encryption="disable" install-location="auto"/>
+    {{CSP}}
+</widget>

@@ -4,7 +4,8 @@
   var IPTV = root.IPTV = root.IPTV || {};
   var U = IPTV.util = {};
 
-  IPTV.VERSION = '1.0.0';
+  /* Versión de la compilación (config.js la toma de package.json) */
+  IPTV.VERSION = (IPTV.config && IPTV.config.version) || '0.0.0';
 
   /* ---------- Plataforma ---------- */
   U.detectPlatform = function () {

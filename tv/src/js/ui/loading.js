@@ -6,11 +6,14 @@
   var screens = IPTV.screens = IPTV.screens || {};
 
   screens.loading = {
+    /* Función que cancela una búsqueda en curso (la define quien la inicia) */
+    cancelHandler: null,
+
     create: function () {
       var self = this;
       var el = h('div', { className: 'loading-screen' });
       el.innerHTML =
-        '<div class="brand"><div class="brand-logo">' + U.icon('live') + '</div><div class="brand-name">IPTV Player</div></div>' +
+        UI.brandHtml() +
         UI.spinnerHtml +
         '<div class="loading-text"></div>' +
         '<div class="progress hidden"><div class="progress-fill"></div></div>';
@@ -22,6 +25,7 @@
       return el;
     },
     show: function (params) {
+      this.el.querySelector('.brand-name').textContent = (IPTV.config && IPTV.config.appName) || 'IPTV Player';
       this.setText(params.text || 'Cargando…');
       IPTV.focus.set(this.cancelBtn);
     },
@@ -35,12 +39,19 @@
         this.bar.classList.add('hidden');
       }
     },
+    hide: function () { this.cancelHandler = null; },
     cancel: function () {
-      IPTV.app.source = null;
-      IPTV.app.profile = null;
+      var handler = this.cancelHandler;
+      this.cancelHandler = null;
+      var app = IPTV.app;
+      if (handler) { try { handler(); } catch (e) { U.log(e); } }
+      if (app.source && app.source.dispose) { app.source.dispose(); }
+      if (IPTV.session && IPTV.session.relocator) { IPTV.session.relocator.cancel(); }
+      app.source = null;
+      app.profile = null;
       IPTV.portal.stop();
       IPTV.storage.remove('activeProfile');
-      IPTV.app.reset('login');
+      app.reset('login');
     },
     onBack: function () { this.cancel(); return true; }
   };

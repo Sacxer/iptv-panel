@@ -25,6 +25,7 @@
       this.titleEl = el.querySelector('.block-title');
       this.reasonEl = el.querySelector('.block-reason');
       this.untilEl = el.querySelector('.block-until');
+      this.contactEl = el.querySelector('.block-contact');
       var btns = el.querySelector('.block-buttons');
       this.retryBtn = UI.button('Reintentar', function () { self.retry(); }, 'primary');
       btns.appendChild(this.retryBtn);
@@ -48,6 +49,8 @@
       U.show(this.reasonEl, !!info.reason);
       this.untilEl.textContent = info.until ? 'Se estima que el servicio se restablezca el ' + U.formatUnixDateTime(info.until) + '.' : '';
       U.show(this.untilEl, !!info.until);
+      var support = UI.supportText();
+      this.contactEl.textContent = support ? 'Comuníquese con su proveedor: ' + support : 'Por favor, comuníquese con su proveedor.';
     },
 
     retry: function () {
@@ -65,7 +68,7 @@
     },
 
     onKey: function (action) {
-      if (action === 'back') { IPTV.app.askExit(); return true; }
+      if (action === 'back') { IPTV.app.backFromHome(); return true; }
       if (U.find(['left', 'right', 'up', 'down', 'ok'], function (a) { return a === action; })) { return false; }
       return true; /* bloquear el resto de teclas (canales, reproducción…) */
     }

@@ -95,7 +95,11 @@ export async function raiseAlert(device, type, message, userId = null) {
 export async function recordDeviceSeen(req, user, activity) {
   try {
     const userAgent = (req.get('user-agent') || '').slice(0, 500);
-    const info = detectDevice(userAgent, req.headers);
+    // El reproductor de vídeo de un televisor no puede enviar cabeceras: su ID llega como ?did= en la URL.
+    const did = typeof req.query?.did === 'string' ? req.query.did.trim().slice(0, 100) : '';
+    const viaQuery = Boolean(did && !req.get('x-device-id'));
+    const headers = viaQuery ? { ...req.headers, 'x-device-id': did } : req.headers;
+    const info = detectDevice(userAgent, headers);
     if (!info.uid && !userAgent) return null;
     const uid = info.uid ? `id:${info.uid}`.slice(0, 128) : `ua:${user.id}:${sha1(normalizeUserAgent(userAgent))}`;
     const ip = clientIp(req);
@@ -174,7 +178,8 @@ export async function recordDeviceSeen(req, user, activity) {
 
     const patch = { last_seen_at: t, last_ip: ip, last_activity: activity, last_user_id: user.id, updated_at: t };
     if (!device.first_seen_at) patch.first_seen_at = t;
-    const specific = info.confidence === 'high' || Boolean(info.model);
+    // Con ?did= el User-Agent es el del reproductor, no el del equipo: no cambia sus datos.
+    const specific = !viaQuery && (info.confidence === 'high' || Boolean(info.model));
     // Una firma más específica (con modelo/tipo) mejora los datos de un equipo que solo se conocía por la app.
     if (specific || !device.user_agent) patch.user_agent = userAgent;
     if (!bool(device.type_locked) && info.type !== 'unknown' && (specific || device.type === 'unknown')) patch.type = info.type;

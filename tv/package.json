@@ -1,16 +1,21 @@
 {
   "name": "iptv-tv-player",
   "version": "1.0.0",
-  "description": "Reproductor IPTV para Samsung Smart TV (Tizen) y LG Smart TV (webOS)",
+  "description": "App de TV del operador para Samsung Smart TV (Tizen) y LG Smart TV (webOS)",
   "private": true,
   "scripts": {
     "serve": "node scripts/serve.js",
     "build": "node scripts/build.js",
     "build:tizen": "node scripts/build.js tizen",
     "build:webos": "node scripts/build.js webos",
+    "build:full": "node scripts/build.js --full",
+    "build:all": "node scripts/build.js --all",
+    "build:usb": "node scripts/build.js --usb",
     "icons": "node scripts/make-icons.js",
     "check": "node scripts/check-es5.js",
-    "test": "node test/test-m3u.js && node test/test-core.js"
+    "test": "node test/test-m3u.js && node test/test-core.js",
+    "test-media": "node test/fixtures/make-test-media.js",
+    "demo-source": "node test/fixtures/demo-source.js"
   },
   "devDependencies": {
     "acorn": "^8.14.0"

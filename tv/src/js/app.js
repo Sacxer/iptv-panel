@@ -14,21 +14,38 @@
     profile: null,
     source: null,
     auth: null,
-    xtreamBlock: null
+    xtreamBlock: null,
+    playingItem: null,
+    pointer: false
   };
 
   /* ======================= Escala 1920x1080 ======================= */
   function applyScale() {
     var w = root.innerWidth || 1920, hgt = root.innerHeight || 1080;
     var s = Math.min(w / 1920, hgt / 1080);
+    var left = Math.floor((w - 1920 * s) / 2), top0 = Math.floor((hgt - 1080 * s) / 2);
+    /* Solo desarrollo: IPTV.devView(x, y, ancho) amplía una zona del diseño para revisarla */
+    var dv = IPTV.config.dev && App.devRegion;
+    if (dv) {
+      s = w / dv.w;
+      left = Math.round(-dv.x * s);
+      top0 = Math.round(-dv.y * s);
+    }
     IPTV.scale = s;
     var app = doc.getElementById('app');
     var t = 'scale(' + s + ')';
     app.style.webkitTransform = t;
     app.style.transform = t;
-    app.style.left = Math.floor((w - 1920 * s) / 2) + 'px';
-    app.style.top = Math.floor((hgt - 1080 * s) / 2) + 'px';
+    app.style.left = left + 'px';
+    app.style.top = top0 + 'px';
+    var top = App.top();
+    if (top && top.relayout) { top.relayout(); }
   }
+
+  IPTV.devView = function (x, y, w) {
+    App.devRegion = (w && IPTV.config.dev) ? { x: x || 0, y: y || 0, w: w } : null;
+    applyScale();
+  };
 
   /* ======================= Pantallas ======================= */
   function ensureCreated(s) {
@@ -58,7 +75,8 @@
     App.stack.push(s);
     if (s.show) { s.show(params || {}); }
     var cur = F.get();
-    if (!cur || !s.el.contains(cur)) { F.first(s.el); }
+    /* Con un diálogo abierto encima (p. ej. un aviso), el foco que pidió la pantalla se aplica al cerrarlo */
+    if (App.top() === s && F.root() === s.el && (!cur || !s.el.contains(cur))) { F.first(s.el); }
   };
 
   App.pop = function () {
@@ -70,7 +88,7 @@
     F.popLayer(s.el);
     if (prev.resume) { prev.resume(); }
     var cur = F.get();
-    if (!cur || !prev.el.contains(cur)) { F.first(prev.el); }
+    if (F.root() === prev.el && (!cur || !prev.el.contains(cur))) { F.first(prev.el); }
   };
 
   /* Quita una pantalla concreta del stack (p. ej. bloqueo resuelto) */
@@ -100,20 +118,55 @@
 
   App.back = function () {
     if (App.stack.length > 1) { App.pop(); return; }
+    App.backFromHome();
+  };
+
+  /*
+   * Atrás en la primera pantalla.
+   * - Samsung y webOS anteriores a 2023: ventana de confirmación de salida.
+   * - LG webOS 23 o posterior: la lista de comprobación de LG pide volver a la pantalla de inicio del TV
+   *   (webOS.platformBack), sin ventana.
+   */
+  App.backFromHome = function () {
+    if (IPTV.platform === 'webos' && (IPTV.device.webosMajor || 0) >= 8 && K.platformBack()) {
+      App.stopPlayback();
+      return;
+    }
     App.askExit();
   };
 
+  /* Confirmación de salida en la primera pantalla (requisito de Samsung y LG) */
   App.askExit = function () {
-    UI.Dialog.confirm('Salir', '¿Desea salir de la aplicación?', 'Salir', function () {
-      P.stop();
-      K.exitApp();
-    }, 'Cancelar');
+    if (UI.Dialog.top() && UI.Dialog.top().opts.className === 'exit-dialog') { return; }
+    UI.Dialog.open({
+      title: 'Salir',
+      text: '¿Desea salir de ' + (IPTV.config.appName || 'la aplicación') + '?',
+      className: 'exit-dialog',
+      focus: 1,
+      buttons: [
+        { label: 'Salir', action: function () { setTimeout(App.exit, 0); } },
+        { label: 'Cancelar' }
+      ]
+    });
+  };
+
+  App.exit = function () {
+    App.stopPlayback();
+    IPTV.portal.heartbeat.stop();
+    K.exitApp();
   };
 
   /* ======================= Teclado / control remoto ======================= */
   function onKeyDown(e) {
     var editing = UI.isEditing();
     var t = K.translate(e, editing);
+
+    if (t.pointer) {
+      App.setPointer(t.pointer === 'show');
+      e.preventDefault();
+      return;
+    }
+    if (t.action && App.pointer && t.action !== 'ok') { App.setPointer(false); }
 
     if (editing) {
       var input = doc.activeElement;
@@ -135,8 +188,9 @@
     if (!t.action) { return; }
     e.preventDefault();
     if (e.stopPropagation) { e.stopPropagation(); }
+    if (IPTV.lifecycle) { IPTV.lifecycle.userActivity(); }
 
-    if (t.action === 'exit') { P.stop(); K.exitApp(); return; }
+    if (t.action === 'exit') { App.exit(); return; }
 
     var dlg = UI.Dialog.top();
     if (dlg) {
@@ -157,38 +211,95 @@
     }
   }
 
-  /* Ratón (útil al probar en el navegador) */
-  function onClick(e) {
-    var el = e.target;
+  /* ---------- Puntero (Magic Remote de LG, ratón en el navegador) ---------- */
+  App.setPointer = function (on) {
+    if (App.pointer === on) { return; }
+    App.pointer = on;
+    doc.documentElement.classList[on ? 'add' : 'remove']('pointer');
+  };
+
+  function focusableFrom(el) {
     while (el && el !== doc.body && !(el.classList && el.classList.contains('focusable'))) { el = el.parentNode; }
-    if (!el || el === doc.body) { return; }
+    if (!el || el === doc.body || !el.classList) { return null; }
     var layer = F.root();
-    if (layer && !layer.contains(el)) { return; }
-    F.set(el);
+    if (layer && !layer.contains(el)) { return null; }
+    if (el.classList.contains('disabled') || el.classList.contains('hidden')) { return null; }
+    return el;
+  }
+
+  function onClick(e) {
+    var el = focusableFrom(e.target);
+    if (!el) { return; }
+    F.set(el, { noScroll: true });
     if (el.__isInput) { return; }
     F.ok();
   }
 
+  var lastMove = 0;
+  function onMouseMove(e) {
+    /* Solo movimientos reales (no los que produce el desplazamiento de la lista) */
+    if (e.movementX === 0 && e.movementY === 0) { return; }
+    App.setPointer(true);
+    var now = Date.now();
+    if (now - lastMove < 40) { return; }
+    lastMove = now;
+    var el = focusableFrom(e.target);
+    if (el && el !== F.get() && !UI.isEditing()) { F.set(el, { noScroll: true }); }
+  }
+
   /* ======================= Sesión ======================= */
-  App.connect = function (profile) {
-    P.stop();
+  App.connect = function (profile, retried) {
+    App.stopPlayback();
     IPTV.portal.stop();
+    if (App.source && App.source.dispose) { App.source.dispose(); }
     App.profile = profile;
     App.auth = null;
     App.xtreamBlock = null;
+    App.source = null;
+    App.reset('loading', { text: 'Conectando…' });
+
+    var candidates = IPTV.session.connectCandidates(profile);
+    if (profile.type === 'xtream' && !candidates.length) {
+      App.profile = null;
+      App.reset('login', {
+        error: 'Esta aplicación no tiene configurada la dirección del servidor de ' + (IPTV.config.appName || 'su proveedor') + '. Use "Buscar servidor en mi red" o comuníquese con su proveedor.',
+        canSearch: true,
+        editProfile: profile
+      });
+      return;
+    }
+
     App.source = IPTV.createSource(profile);
     var source = App.source;
-    App.reset('loading', { text: 'Conectando…' });
+
+    IPTV.session.onSearchProgress = function (pr) {
+      if (App.source === source && App.topName() === 'loading') {
+        screens.loading.setText('Buscando el servidor…\n' + pr.label, pr.fraction);
+      }
+    };
 
     source.connect(function (text, frac) {
       screens.loading.setText(text, frac);
     }, function (err, auth) {
       if (source !== App.source) { return; }
       if (err) {
-        App.reset('login', { error: err.message, editProfile: err.code === 'auth' ? profile : null });
+        /* Portal propio con id conocido: buscarlo en la red local antes de mostrar el error */
+        if (err.code === 'network' && !retried && IPTV.session.canRelocate()) {
+          screens.loading.setText('Buscando el servidor en otras direcciones…');
+          screens.loading.cancelHandler = function () { IPTV.session.relocator.cancel(); };
+          IPTV.session.relocate({ force: true }, function (r) {
+            screens.loading.cancelHandler = null;
+            if (App.profile !== profile || source !== App.source) { return; }
+            if (r.outcome === 'found') { App.connect(profile, true); return; }
+            fail(err);
+          });
+          return;
+        }
+        fail(err);
         return;
       }
       S.set('activeProfile', profile.id);
+      if (profile.auto) { IPTV.session.rememberGlobal(profile.server, profile.portalId, null, profile.clientPorts); }
       App.auth = auth;
       if (auth && !auth.ok) {
         App.xtreamBlock = xtreamBlockInfo(auth);
@@ -207,7 +318,22 @@
         screens.loading.setText('Cargando canales…');
         source.load('live', function () { next(); });
       }
-    });
+    }, candidates);
+
+    function fail(err) {
+      if (source.dispose) { source.dispose(); }
+      App.source = null;
+      App.profile = null;
+      var msg = err.message;
+      if (err.code === 'network' && candidates.length > 1) {
+        msg = 'No se pudo conectar con el servidor de ' + (IPTV.config.appName || 'su proveedor') + '. Verifique la conexión a Internet del televisor.';
+      }
+      App.reset('login', {
+        error: msg,
+        canSearch: profile.type === 'xtream' && err.code === 'network',
+        editProfile: profile
+      });
+    }
   };
 
   function xtreamBlockInfo(auth) {
@@ -221,8 +347,9 @@
   }
 
   App.logout = function () {
-    P.stop();
+    App.stopPlayback();
     IPTV.portal.stop();
+    if (App.source && App.source.dispose) { App.source.dispose(); }
     App.source = null;
     App.profile = null;
     S.remove('activeProfile');
@@ -238,8 +365,7 @@
     if (!App.profile) { return; }
     var info = App.currentBlock();
     if (info) {
-      P.stop();
-      doc.documentElement.classList.remove('video-on');
+      App.stopPlayback();
       if (App.isOnStack('block')) { screens.block.update(info); }
       else {
         UI.Dialog.closeAll();
@@ -271,6 +397,34 @@
   };
 
   /*
+   * Inicia la reproducción de un ítem (vista previa o pantalla completa) y el latido del portal.
+   * opts: {startTime}
+   */
+  App.startPlayback = function (item, opts) {
+    opts = opts || {};
+    var o = App.playbackOptions(item);
+    App.playingItem = item;
+    doc.documentElement.classList.add('video-on');
+    /* El latido empieza cuando el vídeo ya se ve (como la app de celular): así el portal une la
+       conexión del reproductor con la del latido y no la cuenta dos veces */
+    var hb = IPTV.portal.heartbeat;
+    if (hb.active && String(hb.streamId) !== String(item.id)) { hb.stop(); }
+    P.play(o.url, { live: o.live, altUrl: o.altUrl, startTime: opts.startTime || 0 });
+  };
+
+  function heartbeatFor(item) {
+    if (!item || !IPTV.portal.enabled) { return; }
+    if (item.type === 'live' || item.type === 'movie' || item.type === 'episode') { IPTV.portal.heartbeat.start(item.id); }
+  }
+
+  App.stopPlayback = function () {
+    App.playingItem = null;
+    P.stop();
+    IPTV.portal.heartbeat.stop();
+    doc.documentElement.classList.remove('video-on');
+  };
+
+  /*
    * Abre el reproductor a pantalla completa.
    * ctx: {list, index, startTime, fromPreview (bool)}
    */
@@ -291,7 +445,7 @@
       if (pos && pos.t > 30) {
         UI.Dialog.open({
           title: item.name,
-          text: 'Continuar donde lo dejó (' + U.formatDuration(pos.t) + ')?',
+          text: '¿Continuar donde lo dejó (' + U.formatDuration(pos.t) + ')?',
           buttons: [
             { label: 'Continuar', action: function () { setTimeout(function () { go(pos.t); }, 0); } },
             { label: 'Desde el inicio', action: function () { setTimeout(function () { go(0); }, 0); } }
@@ -312,20 +466,28 @@
   };
 
   /* ======================= Inicio ======================= */
+  function applyBranding() {
+    var name = IPTV.config.appName || 'IPTV Player';
+    doc.title = name;
+    IPTV.VERSION = IPTV.config.version || IPTV.VERSION;
+  }
+
   App.start = function () {
     IPTV.platform = U.detectPlatform();
     doc.documentElement.classList.add('platform-' + IPTV.platform);
+    applyBranding();
     applyScale();
     root.addEventListener('resize', applyScale);
-    K.registerTizenKeys();
+    K.registerKeys();
     P.init();
 
     doc.addEventListener('keydown', onKeyDown, true);
     doc.addEventListener('click', onClick);
-
-    /* webOS: al volver a primer plano, refrescar portal */
-    doc.addEventListener('visibilitychange', function () {
-      if (!doc.hidden && IPTV.portal.enabled) { IPTV.portal.refresh(); }
+    doc.addEventListener('mousemove', onMouseMove);
+    /* LG Magic Remote: el puntero aparece / desaparece */
+    doc.addEventListener('cursorStateChange', function (ev) {
+      var vis = ev && ev.detail ? ev.detail.visibility : null;
+      if (vis !== null && vis !== undefined) { App.setPointer(!!vis); }
     });
 
     IPTV.portal.on('update', function () {
@@ -334,15 +496,33 @@
       App.checkBlock();
     });
 
-    P.on('state', function (st) {
-      if (st === 'stopped') { doc.documentElement.classList.remove('video-on'); }
+    IPTV.portal.on('limit', function (msg) {
+      if (!App.playingItem) { return; }
+      App.stopPlayback();
+      var ps = screens.player;
+      if (App.topName() === 'player' && ps.showLimit) { ps.showLimit(msg); }
+      else { UI.Dialog.alert('Límite de conexiones', msg + ' Cierre la reproducción en otro equipo e inténtelo de nuevo.'); }
     });
 
-    var activeId = S.get('activeProfile');
-    var profile = activeId ? S.getProfile(activeId) : null;
-    if (profile) { App.connect(profile); }
-    else { App.reset('login'); }
-    U.log('Plataforma:', IPTV.platform, '· motores:', P.describeEngines());
+    P.on('state', function (st) {
+      if (st === 'playing') { heartbeatFor(App.playingItem); }
+      if (st === 'stopped') {
+        doc.documentElement.classList.remove('video-on');
+        App.playingItem = null;
+        IPTV.portal.heartbeat.stop();
+      }
+    });
+    P.on('error', function () { IPTV.portal.heartbeat.stop(); });
+
+    if (IPTV.lifecycle) { IPTV.lifecycle.init(); }
+
+    IPTV.device.init(function () {
+      var activeId = S.get('activeProfile');
+      var profile = activeId ? S.getProfile(activeId) : null;
+      if (profile) { App.connect(profile); }
+      else { App.reset('login'); }
+      U.log(IPTV.config.appName, IPTV.config.version, '· plataforma:', IPTV.platform, '· motores:', P.describeEngines(), '· equipo:', IPTV.device.brand, IPTV.device.model);
+    });
   };
 
   if (doc.readyState === 'loading') {

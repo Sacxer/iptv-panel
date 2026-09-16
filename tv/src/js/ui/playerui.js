@@ -72,10 +72,29 @@
           U.show(self.spinner, true);
           self.showMessage('Reconectando…', r.delay ? 'Nuevo intento en ' + Math.round(r.delay / 1000) + ' s (' + r.cycle + '/' + (r.maxCycles || r.cycle) + ')' : 'Probando formato alternativo', '', true);
         },
-        error: function (msg) { if (self.active) { self.onError(msg); } },
+        error: function (msg, status) {
+          if (!self.active) { return; }
+          if (status === 429) { IPTV.portal.heartbeat.stop(); self.showLimit('El servidor no permite más pantallas a la vez con esta cuenta.'); return; }
+          self.onError(msg);
+        },
         ended: function () { if (self.active) { self.onEnded(); } },
         time: function (t, d) { if (self.active) { self.onTime(t, d); } }
       };
+      if (IPTV.lifecycle) {
+        /* Volvió la conexión: reintentar si el canal quedó con error */
+        IPTV.lifecycle.on('online', function () {
+          if (self.active && self.errorShown && self.item) { self.retryNow(); }
+        });
+        /* Sin red: detener y avisar; se reintenta sola al volver la conexión */
+        IPTV.lifecycle.on('offline', function () {
+          if (!self.active || !self.item) { return; }
+          self.savePosition();
+          IPTV.app.stopPlayback();
+          self.stopLiveRetry();
+          U.hide(self.spinner);
+          self.showMessage('Sin conexión a la red', 'Revise el cable de red o el Wi-Fi del televisor.', 'La reproducción continuará cuando vuelva la conexión · Atrás: salir');
+        });
+      }
       return el;
     },
 
@@ -116,8 +135,7 @@
       if (this.fromPreview && this.item && this.item.type === 'live' && P.isActive()) {
         this.keptItem = this.item;  /* la sección TV en vivo continúa en la vista previa */
       } else {
-        P.stop();
-        doc.documentElement.classList.remove('video-on');
+        IPTV.app.stopPlayback();
       }
     },
 
@@ -141,8 +159,7 @@
       U.show(this.pauseInd, false);
       U.show(this.spinner, true);
       P.setRect(null);
-      var o = IPTV.app.playbackOptions(item);
-      P.play(o.url, { live: o.live, altUrl: o.altUrl, startTime: startTime || 0 });
+      IPTV.app.startPlayback(item, { startTime: startTime || 0 });
       S.addRecent(IPTV.app.profile.id, item);
       this.renderInfo();
       this.showOsd();
@@ -259,6 +276,20 @@
       }
       /* Si el servidor devolvió 403 por corte o suspensión, el portal lo indicará */
       if (IPTV.portal.enabled) { IPTV.portal.refresh(); }
+      /* ¿El servidor cambió de dirección? Si se encuentra, reintentar con la nueva */
+      IPTV.session.checkServer(function (moved) {
+        if (moved && self.active && self.item === it && self.errorShown) {
+          self.showMessage('Servidor encontrado en la nueva dirección', 'Reconectando…', '', true);
+          self.retryNow();
+        }
+      });
+    },
+
+    /* El portal respondió 429 al latido: demasiadas pantallas a la vez */
+    showLimit: function (msg) {
+      U.hide(this.spinner);
+      this.stopLiveRetry();
+      this.showMessage('Límite de conexiones alcanzado', msg || '', 'Cierre la reproducción en otro equipo · OK: reintentar · Atrás: salir');
     },
 
     retryNow: function () {
@@ -307,6 +338,17 @@
         self.item = null;
         self.start(it, 0);
       }, 450);
+    },
+
+    /* Siguiente / anterior: canal o episodio */
+    skip: function (delta) {
+      if (!this.item) { return; }
+      if (this.item.type === 'live') { this.zap(delta); return; }
+      var i = this.index + delta;
+      if (i < 0 || i >= this.list.length) { this.showOsd(); return; }
+      this.index = i;
+      this.item = null;
+      this.start(this.list[i], 0);
     },
 
     /* ---------- Avance / retroceso ---------- */
@@ -397,6 +439,8 @@
         case 'right': this.seek(1); return true;
         case 'rw': this.seek(-1); return true;
         case 'ff': this.seek(1); return true;
+        case 'next': this.skip(1); return true;
+        case 'prev': this.skip(-1); return true;
         case 'play': if (this.errorShown) { this.retryNow(); } else { P.resume(); } this.showOsd(); return true;
         case 'pause': P.pause(); return true;
         case 'playpause': if (this.errorShown) { this.retryNow(); } else { P.togglePause(); this.showOsd(P.paused); } return true;

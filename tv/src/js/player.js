@@ -42,6 +42,7 @@
   var stallTimer = null;
   var timeTimer = null;
   var lastTime = -1;
+  var resumeAt = 0;     /* VOD: posición para el siguiente intento si el motor falla */
 
   /* ======================= Motor AVPlay (Tizen) ======================= */
   var AVPlayEngine = {
@@ -59,14 +60,15 @@
         doc.getElementById('video-layer').appendChild(obj);
       }
       this._obj = obj;
-      var self = this;
-      doc.addEventListener('visibilitychange', function () {
-        try {
-          var av = root.webapis.avplay;
-          if (doc.hidden) { if (P.engine === self) { av.suspend(); } }
-          else if (P.engine === self) { av.restore(); }
-        } catch (e) { /* nada */ }
-      });
+    },
+    /* Multitarea (Samsung): suspend() libera el decodificador conservando la posición; restore() la recupera */
+    suspend: function () {
+      try { root.webapis.avplay.pause(); } catch (e) { /* ya en pausa */ }
+      try { root.webapis.avplay.suspend(); } catch (e2) { /* estado no válido */ }
+    },
+    restore: function () {
+      try { root.webapis.avplay.restore(); } catch (e) { /* nada */ }
+      try { root.webapis.avplay.pause(); } catch (e2) { /* ya en pausa */ }
     },
     load: function (url, opts, sid) {
       var av = root.webapis.avplay;
@@ -166,7 +168,8 @@
         this._inst = hls; this.lib = 'hls';
         hls.on(root.Hls.Events.ERROR, function (ev, data) {
           if (sid !== session || !data || !data.fatal) { return; }
-          engineError(sid, 'Error HLS (' + (data.details || data.type) + ')');
+          var code = data.response && data.response.code ? ' · HTTP ' + data.response.code : '';
+          engineError(sid, 'Error HLS (' + (data.details || data.type) + code + ')', data.response && data.response.code);
         });
         hls.on(root.Hls.Events.MANIFEST_PARSED, function () { playVideo(v, opts, sid); });
         hls.loadSource(url);
@@ -177,8 +180,9 @@
         var mp = root.mpegts.createPlayer({ type: 'mpegts', isLive: !!opts.live, url: url },
           { enableWorker: false, lazyLoad: false, liveBufferLatencyChasing: !!opts.live, enableStashBuffer: true });
         this._inst = mp; this.lib = 'mpegts';
-        mp.on(root.mpegts.Events.ERROR, function (type, detail) {
-          engineError(sid, 'Error MPEG-TS (' + (detail || type) + ')');
+        mp.on(root.mpegts.Events.ERROR, function (type, detail, info) {
+          var status = info && info.code ? info.code : 0;
+          engineError(sid, 'Error MPEG-TS (' + (detail || type) + (status ? ' · HTTP ' + status : '') + ')', status);
         });
         mp.attachMediaElement(v);
         mp.load();
@@ -275,13 +279,13 @@
         list.push({ engine: Html5Engine, url: u, mode: 'native' });
         return;
       }
-      /* navegador de escritorio / otros */
+      /* navegador de escritorio / otros: hls.js primero (el HLS nativo de Chrome es reciente) */
       if (e === 'm3u8') {
         var v = video();
         var nativeHls = v && v.canPlayType && v.canPlayType('application/vnd.apple.mpegurl');
-        if (nativeHls) { list.push({ engine: Html5Engine, url: u, mode: 'native' }); }
-        if (root.Hls && root.Hls.isSupported()) { list.push({ engine: Html5Engine, url: u, mode: 'hls' }); }
-        if (!nativeHls && !(root.Hls && root.Hls.isSupported())) { list.push({ engine: Html5Engine, url: u, mode: 'native' }); }
+        var hlsJs = !!(root.Hls && root.Hls.isSupported());
+        if (hlsJs) { list.push({ engine: Html5Engine, url: u, mode: 'hls' }); }
+        if (nativeHls || !hlsJs) { list.push({ engine: Html5Engine, url: u, mode: 'native' }); }
       } else if (e === 'ts' || (opts.live && e === '')) {
         var feat = root.mpegts && root.mpegts.getFeatureList ? root.mpegts.getFeatureList() : null;
         if (feat && (opts.live ? feat.mseLivePlayback : feat.msePlayback)) { list.push({ engine: Html5Engine, url: u, mode: 'mpegts' }); }
@@ -303,6 +307,7 @@
    * P.play(url, {live, startTime, altUrl})
    */
   P.play = function (url, opts) {
+    suspended = null;
     P.stop(true);
     session++;
     P.url = url;
@@ -310,6 +315,7 @@
     attempts = P.buildAttempts(url, P.opts, P.opts.altUrl);
     attemptIndex = 0;
     cycle = 0;
+    resumeAt = 0;
     startAttempt();
   };
 
@@ -325,6 +331,8 @@
     lastTime = -1;
     U.log('Reproduciendo', a.mode, a.url);
     var o = U.extend({}, P.opts, { engineMode: a.mode });
+    /* VOD: si un motor falla a mitad de la película, el siguiente continúa desde donde iba */
+    if (!P.opts.live && resumeAt > 0) { o.startTime = resumeAt; }
     try {
       a.engine.load(a.url, o, sid);
     } catch (e) {
@@ -370,6 +378,7 @@
       if (lastTime >= 0 && t > lastTime && P.buffering && !P.paused) { setBuffering(false); }
       if (!P.playing && t > 0 && lastTime >= 0) { onPlaying(); }
       lastTime = t;
+      if (t > 1 && !P.opts.live) { resumeAt = t; }
       if (stallTimer && !P.buffering) { clearTimeout(stallTimer); stallTimer = null; }
     }
     P.emit('time', t, d);
@@ -385,7 +394,7 @@
     P.emit('ended');
   }
 
-  function engineError(sid, msg) {
+  function engineError(sid, msg, httpStatus) {
     if (sid !== session) { return; }
     U.log('Error de reproductor:', msg, P.engineName, P.currentUrl);
     session++;  /* invalida eventos del intento fallido */
@@ -393,6 +402,15 @@
     try { if (P.engine) { P.engine.stop(); } } catch (e) { /* nada */ }
     setBuffering(false);
     P.lastError = msg;
+    P.lastStatus = httpStatus || 0;
+
+    /* Acceso denegado o límite de conexiones: otro formato no cambiaría nada */
+    if (httpStatus === 401 || httpStatus === 403 || httpStatus === 429) {
+      P.engine = null;
+      P.playing = false;
+      P.emit('error', msg, httpStatus);
+      return;
+    }
 
     if (attemptIndex + 1 < attempts.length) {
       attemptIndex++;
@@ -410,7 +428,7 @@
     }
     P.engine = null;
     P.playing = false;
-    P.emit('error', msg);
+    P.emit('error', msg, 0);
   }
 
   /* Reinicia desde cero la reproducción actual */
@@ -420,6 +438,7 @@
   };
 
   P.stop = function (silent) {
+    if (!silent) { suspended = null; }
     session++;
     clearTimers();
     if (P.engine) { try { P.engine.stop(); } catch (e) { /* nada */ } }
@@ -431,6 +450,46 @@
   };
 
   P.isActive = function () { return !!P.engine || !!retryTimer; };
+
+  /* ---------- Multitarea ---------- */
+  var suspended = null;
+
+  /* La app pasa a segundo plano: en vivo se detiene (se reanuda al volver); VOD queda en pausa */
+  P.suspend = function () {
+    if (!P.isActive() || suspended) { return false; }
+    suspended = { url: P.url, opts: U.extend({}, P.opts), live: !!P.opts.live, engine: P.engine, wasPaused: !!P.paused };
+    if (suspended.live || !P.engine) {
+      P.stop(true);
+      P.emit('suspended');
+      return true;
+    }
+    suspended.time = P.time();
+    if (P.engine.suspend) { P.engine.suspend(); } else { P.engine.pause(); }
+    P.paused = true;
+    if (stallTimer) { clearTimeout(stallTimer); stallTimer = null; }
+    P.emit('state', 'paused');
+    return true;
+  };
+
+  P.isSuspended = function () { return !!suspended; };
+
+  P.restore = function () {
+    var s = suspended;
+    suspended = null;
+    if (!s) { return; }
+    if (s.live) {
+      P.play(s.url, s.opts);
+      return;
+    }
+    if (P.engine === s.engine && P.engine) {
+      if (P.engine.restore) { P.engine.restore(); }
+      P.paused = true;
+      /* Mismo estado que antes de ocultarse: si se estaba viendo, continúa */
+      if (s.wasPaused) { P.emit('state', 'paused'); } else { P.resume(); }
+    } else {
+      P.play(s.url, U.extend({}, s.opts, { startTime: s.time || 0 }));
+    }
+  };
 
   P.pause = function () {
     if (!P.engine || P.paused) { return; }
@@ -454,6 +513,7 @@
     var d = P.engine.duration();
     if (d > 0) { sec = U.clamp(sec, 0, Math.max(0, d - 2)); } else { sec = Math.max(0, sec); }
     P.engine.seekTo(sec);
+    resumeAt = sec;
     armStall(session);
   };
 

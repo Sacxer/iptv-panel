@@ -25,7 +25,7 @@
 
       /* Menú lateral */
       var side = h('div', { className: 'sidebar', 'data-focus-group': '' });
-      side.appendChild(h('div', { className: 'side-brand', html: '<span class="brand-logo small">' + U.icon('live') + '</span><span class="side-brand-name">IPTV</span>' }));
+      side.appendChild(h('div', { className: 'side-brand', html: '<span class="brand-logo small">' + U.icon('live') + '</span><span class="side-brand-name">' + U.escapeHtml((IPTV.config && IPTV.config.appName) || 'IPTV') + '</span>' }));
       var nav = h('div', { className: 'side-nav' });
       this.navItems = {};
       U.each(ORDER, function (id) {
@@ -88,7 +88,9 @@
       this.clockTimer = setInterval(function () { self.tick(); }, 10000);
       this.onPortalUpdate();
       if (IPTV.notices) { IPTV.notices.attach(this.banner); IPTV.notices.update(); }
-      this.open(U.findIndex(ORDER, function (x) { return x === IPTV.storage.get('lastSection'); }) >= 0 ? IPTV.storage.get('lastSection') : 'live', true);
+      var last = IPTV.storage.get('lastSection');
+      if (U.findIndex(ORDER, function (x) { return x === last; }) < 0 || (last === 'messages' && !IPTV.portal.enabled)) { last = 'live'; }
+      this.open(last, true);
     },
 
     hide: function () {
@@ -133,8 +135,8 @@
         if (!sec.el) {
           sec.el = sec.create();
           sec.el.classList.add('section');
-          this.host.appendChild(sec.el);
         }
+        if (sec.el.parentNode !== this.host) { this.host.appendChild(sec.el); }
         sec.el.classList.remove('hidden');
         this.current = id;
         IPTV.storage.set('lastSection', id);
@@ -143,11 +145,23 @@
         this.setHints(sec.hints || '');
         if (sec.show) { sec.show(); }
       }
+      this.pendingFocus = null;
       if (focusContent) {
         if (!(sec.focusDefault && sec.focusDefault())) {
-          if (!F.focusIn(sec.el)) { F.set(this.navItems[id]); }
+          if (!F.focusIn(sec.el)) {
+            /* Aún cargando: el contenido toma el foco cuando llegue (si el usuario sigue en ese botón) */
+            F.set(this.navItems[id]);
+            this.pendingFocus = id;
+          }
         }
       }
+    },
+
+    /* La sección puede tomar el foco al terminar de cargar */
+    canFocusContent: function (id) {
+      if (this.current !== id) { return false; }
+      if (!this.inSidebar()) { return true; }
+      return this.pendingFocus === id && F.get() === this.navItems[id];
     },
 
     setHints: function (html) { this.hintsEl.innerHTML = html || ''; },
@@ -171,6 +185,8 @@
       var n = (IPTV.portal.enabled && st) ? st.unread : 0;
       var item = this.navItems && this.navItems.messages;
       if (item) {
+        /* Mensajes solo con el portal propio */
+        U.show(item, IPTV.portal.enabled || this.current === 'messages');
         var b = item.querySelector('.badge');
         b.textContent = n > 99 ? '99+' : String(n);
         b.classList[n > 0 ? 'remove' : 'add']('hidden');
@@ -189,7 +205,7 @@
           this.focusSidebar();
           return true;
         }
-        IPTV.app.askExit();
+        IPTV.app.backFromHome();
         return true;
       }
       if ((action === 'chup' || action === 'chdown') && this.inSidebar()) { return true; }

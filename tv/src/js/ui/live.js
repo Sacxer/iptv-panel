@@ -76,8 +76,34 @@
         buffering: function (b) { if (self.previewing()) { U.show(self.previewSpinner, b); } },
         retry: function (r) { if (self.previewing()) { self.setPreviewStatus('Reintentando…'); } },
         state: function (st) { if (self.previewing() && st === 'playing') { self.setPreviewStatus(''); } },
-        error: function (msg) { if (self.previewing()) { U.hide(self.previewSpinner); self.setPreviewStatus('No se pudo reproducir el canal'); } }
+        error: function (msg, status) {
+          if (!self.previewing()) { return; }
+          U.hide(self.previewSpinner);
+          if (status === 429) { self.setPreviewStatus('Límite de conexiones alcanzado'); return; }
+          if (status === 401 || status === 403) {
+            self.setPreviewStatus('Sin acceso a este canal');
+            if (IPTV.portal.enabled) { IPTV.portal.refresh(); }
+            return;
+          }
+          self.setPreviewStatus('No se pudo reproducir el canal');
+          /* ¿El servidor cambió de dirección? */
+          var it = self.previewItem;
+          IPTV.session.checkServer(function (moved) {
+            if (moved && self.previewing() && self.previewItem === it) { self.startPreview(it); }
+          });
+        }
       };
+      if (IPTV.lifecycle) {
+        IPTV.lifecycle.on('online', function () {
+          if (self.previewing() && !P.isActive()) { self.startPreview(self.previewItem); }
+        });
+        IPTV.lifecycle.on('offline', function () {
+          if (!self.previewing()) { return; }
+          IPTV.app.stopPlayback();
+          U.hide(self.previewSpinner);
+          self.setPreviewStatus('Sin conexión a la red');
+        });
+      }
       P.on('buffering', this.onPlayerEvent.buffering);
       P.on('retry', this.onPlayerEvent.retry);
       P.on('state', this.onPlayerEvent.state);
@@ -88,6 +114,10 @@
     reset: function () {
       this.stopPreview();
       this.src = null;
+      /* Otro perfil: la categoría anterior ya no aplica (si no, la lista queda vacía) */
+      this.catId = null;
+      this.catList = null;
+      this.items = [];
       this.cats.setItems([]);
       this.channels.setItems([]);
       this.clearInfo();
@@ -127,7 +157,7 @@
       this.loadCategory(cats[idx], idx);
       var cur = F.get();
       if (!cur || !this.el.contains(cur)) {
-        if (IPTV.screens.shell.current === 'live' && !IPTV.screens.shell.inSidebar()) { this.focusDefault(); }
+        if (IPTV.screens.shell.canFocusContent('live')) { this.focusDefault(); }
       }
     },
 
@@ -225,8 +255,7 @@
       U.show(this.previewSpinner, true);
       doc.documentElement.classList.add('video-on');
       P.setRect(this.previewEl.getBoundingClientRect());
-      var o = IPTV.app.playbackOptions(it);
-      P.play(o.url, { live: true, altUrl: o.altUrl });
+      IPTV.app.startPlayback(it);
       S.addRecent(IPTV.app.profile.id, it);
       this.channels.refresh();
     },
@@ -234,7 +263,7 @@
     stopPreview: function () {
       if (!this.previewItem) { return; }
       this.previewItem = null;
-      P.stop();
+      IPTV.app.stopPlayback();
       this.previewEl.classList.remove('video-hole');
       U.show(this.previewPh, true);
       U.hide(this.previewSpinner);

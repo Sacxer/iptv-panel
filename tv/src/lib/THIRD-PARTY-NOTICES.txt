@@ -1,0 +1,17 @@
+Componentes de terceros incluidos en esta carpeta
+================================================
+
+hls.js 1.7.3 (hls.min.js)
+  Proyecto: https://github.com/video-dev/hls.js
+  Licencia: Apache License 2.0 — https://www.apache.org/licenses/LICENSE-2.0
+  Autores: Dailymotion y colaboradores de hls.js.
+
+mpegts.js 1.8.2 (mpegts.js)
+  Proyecto: https://github.com/xqq/mpegts.js (derivado de flv.js de Bilibili)
+  Licencia: Apache License 2.0 — https://www.apache.org/licenses/LICENSE-2.0
+  Autores: xqq, Bilibili y colaboradores de mpegts.js / flv.js.
+  Incluye código de regenerator-runtime (Facebook, Inc.), licencia MIT:
+  https://github.com/babel/babel/blob/main/packages/babel-plugin-transform-regenerator/LICENSE
+
+Estos archivos se distribuyen sin modificaciones. El texto completo de las licencias está en las
+direcciones indicadas. Si publica la app, conserve este aviso junto a las librerías.

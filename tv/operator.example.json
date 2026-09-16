@@ -1,0 +1,43 @@
+{
+  "_ayuda": "Copie este archivo como operator.json (no se sube a GitHub) y complete sus datos. Ver tv/README.md.",
+  "appName": "IPTV Player",
+  "vendor": "Nombre de su empresa S.A.S.",
+  "appId": {
+    "_ayuda": "tizenPackage: exactamente 10 letras o números (Samsung). webos: identificador en minúsculas (LG).",
+    "tizenPackage": "IptvPlayr1",
+    "tizenName": "IPTVPlayer",
+    "webos": "com.iptvplayer.tv"
+  },
+  "_serverUrls": "Direcciones del servidor para los clientes, en orden. La app prueba la siguiente si una no responde. La segunda es la dirección pública para la revisión de las tiendas (opcional; bórrela si no la usa).",
+  "serverUrls": [
+    "http://192.168.30.100:25461",
+    "http://IP-PUBLICA-O-DOMINIO:25461"
+  ],
+  "_portalId": "Opcional: identificador del portal (campo id de http://SERVIDOR:25461/api/client/ping). Si se indica, la búsqueda en la red solo acepta ese portal.",
+  "portalId": "",
+  "_allow": "Compilación de tienda (npm run build): false y false = solo usuario y contraseña. Poner true para permitir servidor libre y listas M3U.",
+  "allowCustomServer": false,
+  "allowM3U": false,
+  "full": {
+    "_ayuda": "Compilación completa (npm run build -- --full): televisores propios en modo desarrollador y pruebas.",
+    "allowCustomServer": true,
+    "allowM3U": true
+  },
+  "support": {
+    "name": "Soporte",
+    "phone": "",
+    "whatsapp": "",
+    "email": "",
+    "web": ""
+  },
+  "privacyUrl": "http://IP-PUBLICA-O-DOMINIO:25461/privacidad",
+  "tizen": {
+    "_ayuda": "requiredVersion 2.3 = televisores Samsung desde 2015. certificateProfile = perfil de certificado de Tizen Studio para firmar.",
+    "requiredVersion": "2.3",
+    "certificateProfile": "",
+    "csp": true
+  },
+  "webos": {
+    "iconColor": "#2846aa"
+  }
+}

@@ -84,27 +84,131 @@
   }
   baseMethods(XtreamSource.prototype);
 
-  XtreamSource.prototype.api = function (params, cb, timeout) {
-    return H.getJSON(X.apiUrl(this.server, this.user, this.pass, params), cb, timeout);
+  /* Dirección nueva (el portal se reubicó): la usan las peticiones siguientes y las URLs de reproducción */
+  XtreamSource.prototype.setServer = function (url) {
+    var n = U.normalizeServer(url);
+    if (n) { this.server = n; this.profile.server = n; }
   };
 
-  XtreamSource.prototype.connect = function (onProgress, cb) {
-    var self = this;
-    if (onProgress) { onProgress('Conectando con el servidor…'); }
-    this.api({}, function (err, data) {
-      if (err) {
-        cb({ code: 'network', message: err.status ? ('El servidor respondió con error ' + err.status) : err.message });
+  /*
+   * player_api.php con las cabeceras del equipo. Si falla por red / puerto del panel y el servidor es el
+   * portal propio, se busca en sus otras direcciones y se repite una vez (session.js).
+   */
+  XtreamSource.prototype.api = function (params, cb, timeout, retried) {
+    var self = this, used = this.server;
+    return H.getJSON(X.apiUrl(used, this.user, this.pass, params), function (err, data) {
+      if (err && err.canRelocate && !retried && IPTV.session && !self.closed) {
+        IPTV.session.connectionLost(err, used, function (moved) {
+          if (self.closed) { return; }
+          if (moved) { self.api(params, cb, timeout, true); } else { cb(err, null); }
+        });
         return;
       }
-      var auth = X.parseAuth(data);
-      if (auth.reason === 'auth' || auth.reason === 'invalid') {
-        cb({ code: auth.reason, message: auth.message });
-        return;
-      }
-      self.auth = auth;
-      cb(null, auth);
-    }, 25000);
+      cb(err, data);
+    }, timeout, { identity: true });
   };
+
+  XtreamSource.prototype.dispose = function () { this.closed = true; };
+
+  /* Resultado de la autenticación → {ok, auth} o {error: {code, message}} */
+  XtreamSource.evaluateAuth = function (err, data) {
+    if (err) {
+      if (err.status === 401 || err.status === 403) {
+        /* XtreamUI y el portal responden 401/403 o auth:0 según la versión */
+        return { error: { code: 'auth', message: 'Usuario o contraseña incorrectos.' } };
+      }
+      var msg = err.message;
+      if (err.kind === 'http') { msg = 'El servidor respondió con un error (' + err.status + '). Verifique la dirección del servidor.'; }
+      return { error: { code: err.kind === 'http' || err.kind === 'format' ? 'invalid' : 'network', message: msg, canRelocate: !!err.canRelocate, error: err } };
+    }
+    var auth = X.parseAuth(data);
+    if (auth.reason === 'auth' || auth.reason === 'invalid') {
+      return { error: { code: auth.reason, message: auth.message } };
+    }
+    return { ok: true, auth: auth };
+  };
+
+  /* Error más útil entre varios intentos: credenciales > respuesta no válida > red */
+  XtreamSource.bestError = function (errors) {
+    var rank = { auth: 0, invalid: 1, network: 2 }, best = null;
+    U.each(errors, function (e) {
+      if (e && (!best || (rank[e.code] !== undefined ? rank[e.code] : 3) < (rank[best.code] !== undefined ? rank[best.code] : 3))) { best = e; }
+    });
+    return best || { code: 'network', message: 'No se pudo conectar con el servidor.' };
+  };
+
+  /*
+   * Inicia sesión. Con varias direcciones (perfil del operador: serverUrls) se prueban todas a la vez y se
+   * usa la primera de la lista que responde; si una anterior sigue sin responder, se espera un poco antes
+   * de usar una posterior. Así, si la IP local del operador choca con la red de la casa, se usa la siguiente.
+   */
+  XtreamSource.prototype.connect = function (onProgress, cb, candidates) {
+    var self = this;
+    var list = (candidates && candidates.length) ? candidates.slice() : [this.server];
+    if (onProgress) { onProgress('Conectando con el servidor…'); }
+    if (list.length === 1) {
+      if (list[0] !== this.server) { this.setServer(list[0]); }
+      var tryAuth = function (followHint) {
+        self.api({}, function (err, data) {
+          /* Puerto del panel: el mismo equipo indica el puerto de clientes */
+          if (err && err.kind === 'panelPort' && err.clientPort && followHint && IPTV.relocate) {
+            var moved = IPTV.relocate.withPort(self.server, err.clientPort);
+            if (moved) {
+              if (onProgress) { onProgress('Conectando con el puerto de clientes…'); }
+              self.setServer(moved);
+              tryAuth(false);
+              return;
+            }
+          }
+          var r = XtreamSource.evaluateAuth(err, data);
+          if (r.error) { cb(r.error); return; }
+          self.auth = r.auth;
+          cb(null, r.auth);
+        }, 25000);
+      };
+      tryAuth(true);
+      return;
+    }
+    var results = [], finished = false, graceTimer = null;
+    function win(k) {
+      finished = true;
+      if (graceTimer) { clearTimeout(graceTimer); }
+      self.setServer(list[k]);
+      self.auth = results[k].auth;
+      cb(null, results[k].auth);
+    }
+    function check(fromGrace) {
+      if (finished || self.closed) { return; }
+      var k, pendingBefore = false, errors = [];
+      for (k = 0; k < list.length; k++) {
+        var r = results[k];
+        if (r === undefined) { pendingBefore = true; continue; }
+        if (r.ok) {
+          if (!pendingBefore || fromGrace) { win(k); return; }
+          if (!graceTimer) { graceTimer = setTimeout(function () { check(true); }, XtreamSource.PREFER_WAIT); }
+          return;
+        }
+        errors.push(r.error);
+      }
+      if (pendingBefore) { return; }
+      finished = true;
+      cb(XtreamSource.bestError(errors));
+    }
+    function attempt(idx, url, followHint) {
+      H.getJSON(X.apiUrl(url, self.user, self.pass, {}), function (err, data) {
+        if (err && err.kind === 'panelPort' && err.clientPort && followHint && IPTV.relocate) {
+          var moved = IPTV.relocate.withPort(url, err.clientPort);
+          if (moved) { list[idx] = moved; attempt(idx, moved, false); return; }
+        }
+        results[idx] = XtreamSource.evaluateAuth(err, data);
+        check(false);
+      }, 12000, { identity: true });
+    }
+    U.each(list.slice(), function (url, idx) { attempt(idx, url, true); });
+  };
+
+  /* Espera por una dirección preferida que aún no responde cuando otra posterior ya respondió (ms) */
+  XtreamSource.PREFER_WAIT = 2500;
 
   XtreamSource.prototype.load = function (kind, cb) {
     var self = this;
@@ -179,12 +283,16 @@
   };
 
   XtreamSource.prototype.urlFor = function (item) {
+    var url;
     switch (item.type) {
-      case 'live': return X.liveUrl(this.server, this.user, this.pass, item.id, this.liveExt());
-      case 'movie': return X.movieUrl(this.server, this.user, this.pass, item.id, item.ext);
-      case 'episode': return X.episodeUrl(this.server, this.user, this.pass, item.id, item.ext);
+      case 'live': url = X.liveUrl(this.server, this.user, this.pass, item.id, this.liveExt()); break;
+      case 'movie': url = X.movieUrl(this.server, this.user, this.pass, item.id, item.ext); break;
+      case 'episode': url = X.episodeUrl(this.server, this.user, this.pass, item.id, item.ext); break;
       default: return item.url || '';
     }
+    /* Solo con el portal propio: otros servidores reciben la URL estándar */
+    var portal = IPTV.portal;
+    return (portal && portal.enabled && IPTV.device) ? X.withDevice(url, IPTV.device.id) : url;
   };
 
   XtreamSource.prototype.altUrl = function (url) { return X.altLiveUrl(url); };
@@ -230,6 +338,7 @@
     }, 180000);
   };
 
+  M3USource.prototype.dispose = function () { this.closed = true; };
   M3USource.prototype.load = function (kind, cb) { cb(this._items[kind] ? null : { message: 'Lista no cargada' }); };
   M3USource.prototype.reload = function () { this._items = {}; this._cats = {}; this._byCat = {}; };
   M3USource.prototype.getVodInfo = function (item, cb) { cb(null, { plot: '', genre: '', year: '', rating: '', duration: '', image: item.logo, ext: item.ext }); };

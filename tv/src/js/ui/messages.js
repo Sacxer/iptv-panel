@@ -4,6 +4,7 @@
   var IPTV = root.IPTV;
   var U = IPTV.util, F = IPTV.focus, UI = IPTV.ui, h = U.h;
   var sections = IPTV.sections = IPTV.sections || {};
+  var KIND_LABEL = { payment: 'Pago', expiration: 'Vencimiento', maintenance: 'Mantenimiento', promotion: 'Promoción', support: 'Soporte', general: '' };
 
   sections.messages = {
     title: 'Mensajes',
@@ -24,8 +25,14 @@
         rowClass: 'msg-row',
         emptyText: 'No hay mensajes',
         render: function (row, m) {
-          UI.renderRow(row, { name: m.title, logo: false, sub: U.formatUnixDateTime(m.created_at), extraHtml: m.read ? '' : '<span class="unread-dot"></span>' });
+          var kind = KIND_LABEL[m.kind] || '';
+          UI.renderRow(row, {
+            name: m.title, logo: false,
+            sub: (kind ? kind + ' · ' : '') + U.formatUnixDateTime(m.created_at),
+            extraHtml: m.read ? '' : '<span class="unread-dot"></span>'
+          });
           row.classList[m.read ? 'remove' : 'add']('unread');
+          row.setAttribute('data-kind', m.kind || 'general');
         },
         onFocus: function (m) { self.display(m, false); },
         onSelect: function (m) { self.display(m, true); }
@@ -63,7 +70,7 @@
         return;
       }
       this.titleEl.textContent = m.title;
-      this.dateEl.textContent = U.formatUnixDateTime(m.created_at);
+      this.dateEl.textContent = (KIND_LABEL[m.kind] ? KIND_LABEL[m.kind] + ' · ' : '') + U.formatUnixDateTime(m.created_at);
       this.bodyEl.textContent = m.body;
       this.view.scrollTop = 0;
       if (markRead && !m.read) {

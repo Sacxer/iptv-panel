@@ -22,6 +22,12 @@
     return server + '/series/' + encodeURIComponent(user) + '/' + encodeURIComponent(pass) + '/' + id + '.' + (ext || 'mp4');
   };
 
+  /* Añade el ID del equipo (?did=) para que el portal no registre el reproductor como otro equipo */
+  X.withDevice = function (url, did) {
+    if (!url || !did) { return url; }
+    return url + (url.indexOf('?') < 0 ? '?' : '&') + 'did=' + encodeURIComponent(did);
+  };
+
   /* URL alternativa para en vivo: .ts <-> .m3u8 (null si no aplica) */
   X.altLiveUrl = function (url) {
     var m = /^(.*\/live\/[^\/]+\/[^\/]+\/[^\/?#.]+)\.(ts|m3u8)(\?.*)?$/i.exec(url || '');

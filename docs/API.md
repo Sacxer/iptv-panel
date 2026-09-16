@@ -83,6 +83,9 @@ Devuelve (proxy) la guía XMLTV configurada en ajustes (`epg_url`), o 404.
 - `/series/{u}/{p}/{episode_id}.{ext}`
 - `/{u}/{p}/{stream_id}` (formato antiguo, en vivo)
 
+Parámetro opcional `?did={id}`: el ID del equipo cuando el reproductor no puede enviar la cabecera `X-Device-Id`
+(apps de televisor). Así el vídeo se registra en el mismo equipo y no como otro.
+
 Validan: credenciales, habilitado, no suspendido, no vencido, sin corte activo que bloquee,
 que el contenido pertenezca a los paquetes del usuario y el límite de conexiones.
 Según `stream_mode` en ajustes: `redirect` (302 a la fuente), `proxy` (el servidor retransmite)
@@ -172,7 +175,7 @@ Cabeceras que la app envía en todas las peticiones (además de `X-Device-*`): `
 
 ### `POST /api/client/playing`
 La app propia lo llama al empezar a reproducir y cada `interval_seconds` mientras reproduce (cabecera `X-Device-Id` recomendada).
-Cuerpo `{"username","password","stream_id","connection_id?"}` → `{"ok":true,"connection_id":123,"interval_seconds":30}`
+Cuerpo `{"username","password","stream_id","connection_id?"}` (`stream_id` de un canal, película o episodio) → `{"ok":true,"connection_id":123,"interval_seconds":30}`
 (`429` si supera el límite de conexiones). Así la conexión se ve y cuenta hasta que el cliente cierra, aunque el video vaya directo.
 
 ### `POST /api/client/stopped`
