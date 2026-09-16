@@ -82,6 +82,27 @@ puertos 80, 443, 25461 (clientes) y 25460/udp (búsqueda del servidor desde la a
 - **Olvidé la contraseña del panel**: `sudo bash /opt/iptv/install-ubuntu.sh --reset-admin`.
 - Desde una copia local del proyecto: `sudo bash deploy/install-ubuntu.sh` (mismas opciones).
 - Pasar clientes y canales de un servidor a otro: backup `.iptvbak` en *Copias de seguridad* y restaurarlo en el nuevo.
+
+### Servidor que ya tiene XtreamUI (o XUI.one)
+
+El instalador lo detecta y **no lo toca**: XtreamUI sigue funcionando igual mientras migras.
+
+- **Puertos**: si el 25461 (clientes) está ocupado por XtreamUI, usa uno libre (25471, 25481…); si el 80 está ocupado
+  o Nginx ya tiene otros sitios, el panel queda en `http://IP:8080/admin` (o el siguiente puerto libre).
+- **Cortafuegos**: nunca lo activa si hay otros servicios escuchando (XtreamUI usa 25461, 25500, etc.); solo agrega
+  sus reglas si ya estaba activo.
+- **Migración lista**: lee la conexión a la MySQL de XtreamUI (`/home/xtreamcodes/iptv_xtream_codes/config`) o de XUI.one
+  (`/home/xui/config/config.ini`) y la deja guardada en *Migración XtreamUI*.
+- **Ubuntu 18.04** (donde suele estar XtreamUI): el portal necesita 20.04 o más nuevo. Instálalo en otro servidor y
+  migra conectándote a la MySQL de este, o actualiza el sistema.
+
+Pasos para cambiar sin que los clientes noten nada:
+1. Instala con la línea de siempre y entra al panel con los datos que muestra.
+2. *Migración XtreamUI* → migrar (clientes, paquetes, canales). XtreamUI sigue atendiendo mientras tanto.
+3. Prueba algunos clientes con el puerto que indicó el instalador (p. ej. `http://IP:25471`).
+4. Apaga XtreamUI y su inicio automático, y pasa el portal al puerto de siempre:
+   `sudo bash /opt/iptv/install-ubuntu.sh --set-clients-port 25461`
+   (actualiza también la URL para clientes). Los clientes siguen con la misma dirección, usuario y contraseña.
 Para HTTPS: `sudo apt install certbot python3-certbot-nginx && sudo certbot --nginx -d tu-dominio`.
 
 Opción B, con Docker y PostgreSQL:

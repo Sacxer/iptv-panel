@@ -4,28 +4,32 @@
 #  - Instalación nueva: deja todo funcionando SIN datos (sin clientes, canales ni ajustes previos) y al final
 #    muestra la dirección del panel, el usuario y la contraseña.
 #  - Si ya está instalado: actualiza el programa y conserva datos, usuarios y ajustes (antes hace un backup).
+#  - Si el servidor ya tiene XtreamUI (o XUI.one): no lo toca. Usa puertos libres, no cierra sus puertos en el
+#    cortafuegos y deja lista la migración con los datos de su base de datos.
 #
 # Uso (como root, desde la carpeta del proyecto):
 #   sudo bash deploy/install-ubuntu.sh [opciones]
 #
 # Opciones:
-#   --admin-user USUARIO    usuario del panel (por defecto: admin)
-#   --admin-pass CLAVE      contraseña del panel (por defecto: aleatoria; mínimo 8 caracteres)
-#   --reset-admin           en un servidor ya instalado: solo pone una contraseña nueva al usuario del panel
-#                           (sudo bash /opt/iptv/install-ubuntu.sh --reset-admin [--admin-user U] [--admin-pass C])
-#   --clients-port PUERTO   puerto para clientes Xtream Codes / M3U (por defecto: 25461)
-#   --no-firewall           no configurar el cortafuegos (ufw)
+#   --admin-user USUARIO     usuario del panel (por defecto: admin)
+#   --admin-pass CLAVE       contraseña del panel (por defecto: aleatoria; mínimo 8 caracteres)
+#   --clients-port PUERTO    puerto para clientes Xtream Codes / M3U (por defecto: 25461 o, si está ocupado, uno libre)
+#   --no-firewall            no tocar el cortafuegos (ufw)
+# En un servidor ya instalado (sudo bash /opt/iptv/install-ubuntu.sh …):
+#   --reset-admin            solo pone una contraseña nueva al usuario del panel [--admin-user U] [--admin-pass C]
+#   --set-clients-port N     solo cambia el puerto de clientes (p. ej. 25461 después de apagar XtreamUI)
 set -euo pipefail
 
 APP_DIR=/opt/iptv
 APP_USER=iptv
-PORTAL_PORT=8080
 CREDENTIALS_FILE=/root/iptv-credenciales.txt
+DISCOVERY_PORT=25460
 
 ADMIN_USER="admin"
 ADMIN_PASS=""
 RESET_ADMIN=0
-CLIENTS_PORT=25461
+SET_CLIENTS_PORT=""
+CLIENTS_PORT=""
 FIREWALL=1
 
 while [[ $# -gt 0 ]]; do
@@ -34,29 +38,46 @@ while [[ $# -gt 0 ]]; do
     --admin-pass) ADMIN_PASS="${2:-}"; shift 2 ;;
     --reset-admin) RESET_ADMIN=1; shift ;;
     --clients-port) CLIENTS_PORT="${2:-}"; shift 2 ;;
+    --set-clients-port) SET_CLIENTS_PORT="${2:-}"; shift 2 ;;
     --no-firewall) FIREWALL=0; shift ;;
-    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,23p' "$0"; exit 0 ;;
     *) echo "Opción desconocida: $1 (usa --help)"; exit 1 ;;
   esac
 done
 
+valid_port() { [[ "$1" =~ ^[0-9]+$ ]] && (( $1 >= 1 && $1 <= 65535 )); }
+
 if [[ $EUID -ne 0 ]]; then echo "Ejecuta como root: sudo bash $0"; exit 1; fi
 if [[ ! "$ADMIN_USER" =~ ^[A-Za-z0-9._-]{3,64}$ ]]; then echo "Usuario no válido (3-64 letras, números, . _ -)"; exit 1; fi
 if [[ -n "$ADMIN_PASS" && ${#ADMIN_PASS} -lt 8 ]]; then echo "La contraseña debe tener al menos 8 caracteres"; exit 1; fi
-if [[ ! "$CLIENTS_PORT" =~ ^[0-9]+$ ]] || (( CLIENTS_PORT < 1 || CLIENTS_PORT > 65535 )) || (( CLIENTS_PORT == PORTAL_PORT )); then
-  echo "Puerto de clientes no válido"; exit 1
-fi
+if [[ -n "$CLIENTS_PORT" ]] && ! valid_port "$CLIENTS_PORT"; then echo "Puerto de clientes no válido"; exit 1; fi
+if [[ -n "$SET_CLIENTS_PORT" ]] && ! valid_port "$SET_CLIENTS_PORT"; then echo "Puerto de clientes no válido"; exit 1; fi
+
 if [[ -r /etc/os-release ]]; then
   . /etc/os-release
-  if [[ "${ID:-}" != "ubuntu" ]]; then echo "Aviso: probado en Ubuntu; este sistema es ${PRETTY_NAME:-desconocido}. Se continúa."; fi
+  if [[ "${ID:-}" == "ubuntu" ]]; then
+    if [[ "$(printf '%s\n' "20.04" "${VERSION_ID:-0}" | sort -V | head -1)" != "20.04" ]]; then
+      echo "Este servidor tiene Ubuntu ${VERSION_ID}. El portal necesita Ubuntu 20.04 o más nuevo (Node.js 22 no funciona en ${VERSION_ID})."
+      echo "Si aquí corre XtreamUI (suele estar en 18.04): instala el portal en otro servidor y migra desde allá"
+      echo "(Migración XtreamUI → conexión a la MySQL de este servidor), o actualiza el sistema operativo."
+      exit 1
+    fi
+  else
+    echo "Aviso: probado en Ubuntu; este sistema es ${PRETTY_NAME:-desconocido}. Se continúa."
+  fi
 fi
 
 SRC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 FRESH=1
 [[ -f "$APP_DIR/server/.env" ]] && FRESH=0
+ENV_FILE="$APP_DIR/server/.env"
 
 step() { echo; echo "==> $*"; }
 random_pass() { tr -dc 'A-Za-z0-9' </dev/urandom | head -c "${1:-16}" || true; }
+env_get() { [[ -f "$ENV_FILE" ]] && sed -n "s/^$1=//p" "$ENV_FILE" | tail -1 || true; }
+env_set() {
+  if grep -q "^$1=" "$ENV_FILE"; then sed -i "s|^$1=.*|$1=$2|" "$ENV_FILE"; else echo "$1=$2" >> "$ENV_FILE"; fi
+}
 
 # IP para los clientes: la de la interfaz de red principal (la que tiene la puerta de enlace).
 # Sirve aunque el servidor no tenga IP pública; nunca se usa 127.0.0.1.
@@ -69,24 +90,68 @@ detect_main_ip() {
   echo "$ip"
 }
 
-# --reset-admin en un servidor instalado: solo cambia la contraseña del panel, no reinstala nada.
+# Puertos TCP a la escucha y quién los usa.
+port_busy() { ss -Hltn 2>/dev/null | awk '{print $4}' | grep -Eq "[:.]$1\$"; }
+port_owner() {
+  local pid exe
+  pid="$(ss -Hltnp 2>/dev/null | awk -v p=":$1" '$4 ~ p"$" {print $6}' | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2)"
+  [[ -z "$pid" ]] && { echo "desconocido"; return; }
+  exe="$(readlink -f "/proc/$pid/exe" 2>/dev/null || true)"
+  echo "${exe:-pid $pid}"
+}
+first_free_port() {
+  local p
+  for p in "$@"; do port_busy "$p" || { echo "$p"; return 0; }; done
+  return 1
+}
+ufw_active() { command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; }
+
+# XtreamUI / XUI.one en este mismo servidor.
+XTREAM_KIND=""
+if [[ -d /home/xtreamcodes/iptv_xtream_codes ]]; then XTREAM_KIND="XtreamUI";
+elif [[ -d /home/xui ]]; then XTREAM_KIND="XUI.one"; fi
+
+# ---------------------------------------------------------------------------------------------------------------
+# Tareas sueltas en un servidor ya instalado (no reinstalan nada).
+# ---------------------------------------------------------------------------------------------------------------
 if (( RESET_ADMIN )); then
   if (( FRESH )); then echo "El portal no está instalado en $APP_DIR"; exit 1; fi
   [[ -z "$ADMIN_PASS" ]] && ADMIN_PASS="$(random_pass 16)"
   (cd "$APP_DIR/server" && sudo -u "$APP_USER" env ADMIN_USER="$ADMIN_USER" ADMIN_PASS="$ADMIN_PASS" node scripts/create-admin.js --from-env)
   MAIN_IP="$(detect_main_ip || true)"
+  PANEL_URL="$(sed -n 's/^Panel: *//p' "$CREDENTIALS_FILE" 2>/dev/null | head -1)"
+  PANEL_URL="${PANEL_URL:-http://${MAIN_IP:-IP-DEL-SERVIDOR}/admin}"
   install -m 600 /dev/null "$CREDENTIALS_FILE"
-  printf 'Portal IPTV — acceso al panel
-Panel:      http://%s/admin
-Usuario:    %s
-Contraseña: %s
-Cambiada:   %s
-'     "${MAIN_IP:-IP-DEL-SERVIDOR}" "$ADMIN_USER" "$ADMIN_PASS" "$(date '+%Y-%m-%d %H:%M')" > "$CREDENTIALS_FILE"
+  printf 'Portal IPTV — acceso al panel\nPanel:      %s\nUsuario:    %s\nContraseña: %s\nCambiada:   %s\n' \
+    "$PANEL_URL" "$ADMIN_USER" "$ADMIN_PASS" "$(date '+%Y-%m-%d %H:%M')" > "$CREDENTIALS_FILE"
   echo
-  echo "   Panel:       http://${MAIN_IP:-IP-DEL-SERVIDOR}/admin"
+  echo "   Panel:       ${PANEL_URL}"
   echo "   Usuario:     ${ADMIN_USER}"
   echo "   Contraseña:  ${ADMIN_PASS}"
   echo "(guardado en ${CREDENTIALS_FILE})"
+  exit 0
+fi
+
+if [[ -n "$SET_CLIENTS_PORT" ]]; then
+  if (( FRESH )); then echo "El portal no está instalado en $APP_DIR"; exit 1; fi
+  OLD_PORT="$(env_get EXTRA_PORTS | cut -d, -f1)"
+  if [[ "$SET_CLIENTS_PORT" != "$OLD_PORT" ]] && port_busy "$SET_CLIENTS_PORT"; then
+    echo "El puerto $SET_CLIENTS_PORT lo está usando: $(port_owner "$SET_CLIENTS_PORT")."
+    [[ -n "$XTREAM_KIND" ]] && echo "Apaga primero $XTREAM_KIND (y su inicio automático) cuando hayas terminado la migración."
+    exit 1
+  fi
+  env_set EXTRA_PORTS "$SET_CLIENTS_PORT"
+  PUB="$(env_get PUBLIC_URL)"
+  if [[ "$PUB" =~ ^(https?://[^/:]+):([0-9]+)$ && "${BASH_REMATCH[2]}" == "$OLD_PORT" ]]; then
+    env_set PUBLIC_URL "${BASH_REMATCH[1]}:${SET_CLIENTS_PORT}"
+  fi
+  if [[ -n "$OLD_PORT" && "$OLD_PORT" != "$SET_CLIENTS_PORT" ]]; then
+    (cd "$APP_DIR/server" && sudo -u "$APP_USER" node scripts/set-public-port.js "$OLD_PORT" "$SET_CLIENTS_PORT") || true
+  fi
+  if (( FIREWALL )) && ufw_active; then ufw allow "${SET_CLIENTS_PORT}/tcp" >/dev/null; fi
+  systemctl restart iptv-portal
+  echo "Puerto de clientes: ${OLD_PORT:-?} -> ${SET_CLIENTS_PORT}. Portal reiniciado."
+  echo "Revisa la URL para clientes en el panel (Ajustes -> Red) si usas un dominio."
   exit 0
 fi
 
@@ -100,11 +165,44 @@ if (( FRESH )); then
 else
   echo "El Portal IPTV ya está instalado en $APP_DIR: se ACTUALIZA conservando datos, usuarios y ajustes."
 fi
+[[ -n "$XTREAM_KIND" ]] && echo "Se detectó ${XTREAM_KIND} en este servidor: se instala al lado, sin detenerlo ni cambiar su configuración."
+
+# ---------------------------------------------------------------------------------------------------------------
+# Puertos: en una instalación nueva se eligen libres; al actualizar se conservan los del .env.
+# ---------------------------------------------------------------------------------------------------------------
+if (( FRESH )); then
+  PORTAL_PORT="$(first_free_port 8080 8081 8082 8090 18080)" || { echo "No hay un puerto libre para el portal (8080-8090)."; exit 1; }
+  if [[ -n "$CLIENTS_PORT" ]]; then
+    if port_busy "$CLIENTS_PORT"; then
+      echo "El puerto $CLIENTS_PORT lo está usando: $(port_owner "$CLIENTS_PORT"). Elige otro con --clients-port."
+      exit 1
+    fi
+  else
+    CLIENTS_PORT="$(first_free_port 25461 25471 25481 25491 8880 8881)" || { echo "No hay un puerto libre para clientes."; exit 1; }
+  fi
+  # Panel en el puerto 80 con Nginx solo si el 80 está libre y no hay otro Nginx con sitios propios.
+  USE_NGINX=1
+  if port_busy 80; then
+    USE_NGINX=0
+    echo "El puerto 80 lo usa $(port_owner 80): el panel quedará en el puerto ${PORTAL_PORT}."
+  elif [[ -d /etc/nginx/sites-enabled ]] && ls /etc/nginx/sites-enabled 2>/dev/null | grep -vqx 'default'; then
+    USE_NGINX=0
+    echo "Nginx ya tiene otros sitios: no se modifican; el panel quedará en el puerto ${PORTAL_PORT}."
+  fi
+else
+  PORTAL_PORT="$(env_get PORT)"; PORTAL_PORT="${PORTAL_PORT:-8080}"
+  CLIENTS_PORT="$(env_get EXTRA_PORTS | cut -d, -f1)"; CLIENTS_PORT="${CLIENTS_PORT:-25461}"
+  USE_NGINX=0
+  [[ -f /etc/nginx/sites-enabled/iptv ]] && USE_NGINX=1
+fi
 
 step "Paquetes del sistema"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
-apt-get install -y -q curl ca-certificates build-essential python3 nginx ufw tar
+PKGS=(curl ca-certificates build-essential python3 tar)
+(( USE_NGINX )) && PKGS+=(nginx)
+(( FIREWALL )) && ! command -v ufw >/dev/null && [[ -z "$XTREAM_KIND" ]] && PKGS+=(ufw)
+apt-get install -y -q "${PKGS[@]}"
 if ! command -v node >/dev/null || [[ "$(node -v | cut -d. -f1 | tr -d v)" -lt 22 ]]; then
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
   apt-get install -y -q nodejs
@@ -132,8 +230,7 @@ if command -v git >/dev/null && git -C "$SRC_DIR" rev-parse HEAD >/dev/null 2>&1
   B_COMMIT="$(git -C "$SRC_DIR" rev-parse HEAD)"
   B_BRANCH="$(git -C "$SRC_DIR" rev-parse --abbrev-ref HEAD)"
   B_REPO="$(git -C "$SRC_DIR" remote get-url origin 2>/dev/null | sed -E 's#^[a-z]+://([^@/]*@)?github\.com/##; s#^git@github\.com:##; s#\.git$##')"
-  printf '{"commit":"%s","branch":"%s","repo":"%s","installed_at":%s}
-' "$B_COMMIT" "$B_BRANCH" "$B_REPO" "$(date +%s)" > "$APP_DIR/server/build-info.json"
+  printf '{"commit":"%s","branch":"%s","repo":"%s","installed_at":%s}\n' "$B_COMMIT" "$B_BRANCH" "$B_REPO" "$(date +%s)" > "$APP_DIR/server/build-info.json"
 fi
 
 step "Compilando el panel"
@@ -142,17 +239,20 @@ step "Dependencias del servidor"
 cd "$APP_DIR/server" && npm ci --omit=dev --no-audit --no-fund
 
 MAIN_IP="$(detect_main_ip || true)"
+HOST_SHOW="${MAIN_IP:-IP-DEL-SERVIDOR}"
+if (( USE_NGINX )); then PANEL_URL="http://${HOST_SHOW}/admin"; else PANEL_URL="http://${HOST_SHOW}:${PORTAL_PORT}/admin"; fi
+
 if (( FRESH )); then
   step "Configuración inicial"
-  cp "$APP_DIR/server/.env.example" "$APP_DIR/server/.env"
-  sed -i "s/^JWT_SECRET=.*/JWT_SECRET=$(random_pass 48)/" "$APP_DIR/server/.env"
-  sed -i "s/^ADMIN_PASSWORD=.*/ADMIN_PASSWORD=/" "$APP_DIR/server/.env"
-  sed -i "s/^EXTRA_PORTS=.*/EXTRA_PORTS=${CLIENTS_PORT}/" "$APP_DIR/server/.env"
-  if [[ -n "$MAIN_IP" ]]; then
-    sed -i "s|^PUBLIC_URL=.*|PUBLIC_URL=http://${MAIN_IP}:${CLIENTS_PORT}|" "$APP_DIR/server/.env"
-  fi
+  cp "$APP_DIR/server/.env.example" "$ENV_FILE"
+  env_set JWT_SECRET "$(random_pass 48)"
+  env_set ADMIN_PASSWORD ""
+  env_set PORT "$PORTAL_PORT"
+  env_set EXTRA_PORTS "$CLIENTS_PORT"
+  (( USE_NGINX )) || env_set TRUST_PROXY false
+  [[ -n "$MAIN_IP" ]] && env_set PUBLIC_URL "http://${MAIN_IP}:${CLIENTS_PORT}"
 fi
-chmod 600 "$APP_DIR/server/.env"
+chmod 600 "$ENV_FILE"
 mkdir -p "$APP_DIR/server/data"
 chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 
@@ -166,12 +266,26 @@ if (( FRESH )); then
   install -m 600 /dev/null "$CREDENTIALS_FILE"
   cat > "$CREDENTIALS_FILE" <<CRED
 Portal IPTV — acceso al panel
-Panel:      http://${MAIN_IP:-IP-DEL-SERVIDOR}/admin
+Panel:      ${PANEL_URL}
 Usuario:    ${ADMIN_USER}
 Contraseña: ${ADMIN_PASS}
 Creado:     $(date '+%Y-%m-%d %H:%M')
 CRED
-  chmod 600 "$CREDENTIALS_FILE"
+fi
+
+# Datos de la base de XtreamUI para la migración (se leen como root; se guardan con el usuario del portal).
+XTREAM_MSG=""
+if [[ -n "$XTREAM_KIND" ]]; then
+  step "Conexión a ${XTREAM_KIND} para la migración"
+  if XJSON="$(cd "$APP_DIR/server" && node scripts/detect-xtreamui.js 2>/dev/null)" && [[ -n "$XJSON" ]]; then
+    if echo "$XJSON" | grep -q '"unreadable"'; then
+      XTREAM_MSG="No se pudo leer la configuración de ${XTREAM_KIND}: escribe los datos de su MySQL en el panel (Migración XtreamUI)."
+    else
+      XTREAM_MSG="$(cd "$APP_DIR/server" && printf '%s' "$XJSON" | sudo -u "$APP_USER" node scripts/set-xtream-db.js)"
+    fi
+    echo "$XTREAM_MSG"
+  fi
+  XJSON=""
 fi
 
 step "Servicio del portal"
@@ -197,22 +311,39 @@ systemctl daemon-reload
 systemctl enable iptv-portal >/dev/null
 systemctl restart iptv-portal
 
-step "Nginx (panel en el puerto 80)"
-cp "$SRC_DIR/deploy/nginx-iptv.conf" /etc/nginx/sites-available/iptv
-ln -sf /etc/nginx/sites-available/iptv /etc/nginx/sites-enabled/iptv
-rm -f /etc/nginx/sites-enabled/default
-nginx -t && systemctl reload nginx
+if (( USE_NGINX )); then
+  step "Nginx (panel en el puerto 80)"
+  sed "s#http://127.0.0.1:8080#http://127.0.0.1:${PORTAL_PORT}#" "$SRC_DIR/deploy/nginx-iptv.conf" > /etc/nginx/sites-available/iptv
+  ln -sf /etc/nginx/sites-available/iptv /etc/nginx/sites-enabled/iptv
+  rm -f /etc/nginx/sites-enabled/default
+  nginx -t && systemctl reload nginx
+fi
 
-if (( FIREWALL )); then
+# ---------------------------------------------------------------------------------------------------------------
+# Cortafuegos: nunca se cierran puertos de otros programas.
+# ---------------------------------------------------------------------------------------------------------------
+OUR_RULES=("${CLIENTS_PORT}/tcp" "${DISCOVERY_PORT}/udp")
+if (( USE_NGINX )); then OUR_RULES+=("80/tcp" "443/tcp"); else OUR_RULES+=("${PORTAL_PORT}/tcp"); fi
+FIREWALL_MSG=""
+if (( FIREWALL )) && command -v ufw >/dev/null; then
   step "Cortafuegos"
-  ufw allow OpenSSH >/dev/null
-  ufw allow 80/tcp >/dev/null
-  ufw allow 443/tcp >/dev/null
-  ufw allow "${CLIENTS_PORT}/tcp" >/dev/null
-  # Descubrimiento en red local para la app (solo responde a IPs de red local)
-  ufw allow 25460/udp >/dev/null
-  ufw --force enable >/dev/null
-  ufw status | sed -n '1,12p'
+  if ufw_active; then
+    for r in "${OUR_RULES[@]}"; do ufw allow "$r" >/dev/null; done
+    FIREWALL_MSG="Cortafuegos: se abrieron ${OUR_RULES[*]} (las reglas que ya tenía se conservan)."
+  elif (( FRESH )); then
+    # Otros servicios a la escucha para todo el mundo (aparte de SSH, DNS local y los del portal).
+    OTHERS="$(ss -Hltn 2>/dev/null | awk '{print $4}' | grep -Ev '^(127\.|\[::1\]|\[::ffff:127\.)' | sed -E 's/.*[:.]([0-9]+)$/\1/' \
+      | sort -un | grep -vxE "22|53|80|443|${PORTAL_PORT}|${CLIENTS_PORT}" | paste -sd ' ' - || true)"
+    if [[ -z "$XTREAM_KIND" && -z "$OTHERS" ]]; then
+      ufw allow OpenSSH >/dev/null
+      for r in "${OUR_RULES[@]}"; do ufw allow "$r" >/dev/null; done
+      ufw --force enable >/dev/null
+      FIREWALL_MSG="Cortafuegos activado: SSH, ${OUR_RULES[*]}."
+    else
+      FIREWALL_MSG="Cortafuegos NO activado para no bloquear otros servicios (puertos ${OTHERS:-de ${XTREAM_KIND}}). Si lo activas, abre también: ${OUR_RULES[*]}."
+    fi
+  fi
+  [[ -n "$FIREWALL_MSG" ]] && echo "$FIREWALL_MSG"
 fi
 
 step "Comprobando que el portal responde"
@@ -233,6 +364,8 @@ if [[ -n "$SHOW_PASS" ]]; then
     echo "Aviso: no se pudo comprobar el inicio de sesión. Restablece con: sudo bash $APP_DIR/install-ubuntu.sh --reset-admin"
   fi
 fi
+CLIENTS_OK=1
+if ! curl -fsS "http://127.0.0.1:${CLIENTS_PORT}/health" 2>/dev/null | grep -q '"ok"'; then CLIENTS_OK=0; fi
 
 echo
 echo "==> Puertos de red (interfaces) y sus IPs"
@@ -251,7 +384,6 @@ done
 echo "  * = interfaz principal (puerta de enlace)"
 
 PUBLIC_IP="$(curl -fsS --max-time 4 https://api.ipify.org 2>/dev/null || true)"
-HOST_SHOW="${MAIN_IP:-IP-DEL-SERVIDOR}"
 echo
 echo "╔══════════════════════════════════════════════════════════════╗"
 if (( FRESH )); then
@@ -260,9 +392,9 @@ else
 echo "   PORTAL IPTV ACTUALIZADO (datos conservados)"
 fi
 echo "╠══════════════════════════════════════════════════════════════╣"
-echo "   Panel:       http://${HOST_SHOW}/admin"
+echo "   Panel:       ${PANEL_URL}"
 if [[ -n "$PUBLIC_IP" && "$PUBLIC_IP" != "$MAIN_IP" ]]; then
-echo "   Desde fuera: http://${PUBLIC_IP}/admin   (si el router/NAT lo permite)"
+echo "   Desde fuera: ${PANEL_URL/${HOST_SHOW}/${PUBLIC_IP}}   (si el router/NAT lo permite)"
 fi
 if [[ -n "$SHOW_PASS" ]]; then
 echo "   Usuario:     ${ADMIN_USER}"
@@ -274,7 +406,21 @@ fi
 echo
 echo "   Clientes (IPTV Smarters, TiviMate, app propia):"
 echo "     Servidor:  http://${HOST_SHOW}:${CLIENTS_PORT}"
+if (( ! CLIENTS_OK )); then
+echo "     ¡Atención! El puerto ${CLIENTS_PORT} no responde (¿ocupado por otro programa?)."
+fi
+if [[ -n "$XTREAM_KIND" ]]; then
+echo
+echo "   ${XTREAM_KIND} sigue funcionando igual (no se tocó)."
+echo "   1. Migra: Panel -> Migración XtreamUI (la conexión ya está guardada)."
+echo "   2. Prueba algunos clientes con el puerto ${CLIENTS_PORT}."
+if [[ "$CLIENTS_PORT" != "25461" ]]; then
+echo "   3. Para que los clientes NO cambien nada: apaga ${XTREAM_KIND} y su inicio"
+echo "      automático, y luego:  sudo bash $APP_DIR/install-ubuntu.sh --set-clients-port 25461"
+fi
+fi
 echo "╚══════════════════════════════════════════════════════════════╝"
+[[ -n "$FIREWALL_MSG" ]] && echo "$FIREWALL_MSG"
 if [[ -n "$SHOW_PASS" ]]; then
   echo "Estos datos quedaron guardados solo para root en ${CREDENTIALS_FILE}. Cambia la contraseña al entrar."
 fi
