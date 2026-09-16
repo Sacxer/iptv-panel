@@ -36,9 +36,6 @@ class DiscoveredServer {
   final List<int> ports;
   final DiscoverySource source;
 
-  /// Identificador fijo del portal (`null` en portales anteriores a 1.0.2 de la app).
-  final String? id;
-
   const DiscoveredServer({
     required this.name,
     required this.url,
@@ -46,7 +43,6 @@ class DiscoveredServer {
     this.publicUrl,
     this.ports = const [],
     this.source = DiscoverySource.udp,
-    this.id,
   });
 
   Uri get _uri => Uri.parse(url);
@@ -65,8 +61,6 @@ class DiscoveredServer {
   /// Mismo portal: misma URL, o mismo equipo y el puerto de uno está entre
   /// los puertos del otro (p. ej. 8080 por UDP y 25461 por barrido).
   bool isSameServer(DiscoveredServer other) {
-    // Dos portales distintos en el mismo equipo nunca se unen.
-    if (id != null && other.id != null && id != other.id) return false;
     if (ServerDiscovery.urlKey(url) == ServerDiscovery.urlKey(other.url)) {
       return true;
     }
@@ -78,7 +72,6 @@ class DiscoveredServer {
     String? version,
     String? publicUrl,
     List<int>? ports,
-    String? id,
   }) =>
       DiscoveredServer(
         name: name,
@@ -87,7 +80,6 @@ class DiscoveredServer {
         publicUrl: publicUrl ?? this.publicUrl,
         ports: ports ?? this.ports,
         source: source,
-        id: id ?? this.id,
       );
 
   @override
@@ -98,16 +90,15 @@ class DiscoveredServer {
       other.version == version &&
       other.publicUrl == publicUrl &&
       other.source == source &&
-      other.id == id &&
       _sameInts(other.ports, ports);
 
   @override
-  int get hashCode => Object.hash(
-      name, url, version, publicUrl, source, id, Object.hashAll(ports));
+  int get hashCode =>
+      Object.hash(name, url, version, publicUrl, source, Object.hashAll(ports));
 
   @override
   String toString() =>
-      'DiscoveredServer($name, $url, v$version, id: $id, public: $publicUrl, '
+      'DiscoveredServer($name, $url, v$version, public: $publicUrl, '
       'ports: $ports, ${source.name})';
 }
 
@@ -495,7 +486,6 @@ class ServerDiscovery {
       publicUrl: _cleanUrl(nonEmpty(j['public_url'])),
       ports: ports.contains(effectivePort) ? ports : [effectivePort, ...ports],
       source: DiscoverySource.udp,
-      id: nonEmpty(j['id']),
     );
   }
 
@@ -515,7 +505,6 @@ class ServerDiscovery {
       publicUrl: _cleanUrl(nonEmpty(j['public_url'])),
       ports: ports.contains(port) ? ports : [...ports, port],
       source: DiscoverySource.http,
-      id: nonEmpty(j['id']),
     );
   }
 
@@ -607,7 +596,6 @@ class ServerDiscovery {
     return best.copyWith(
       version: best.version.isEmpty ? other.version : null,
       publicUrl: best.publicUrl ?? other.publicUrl,
-      id: best.id ?? other.id,
       ports: [
         ...best.ports,
         for (final p in other.ports)

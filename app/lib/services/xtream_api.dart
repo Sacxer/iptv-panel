@@ -8,7 +8,6 @@ import '../models/media_item.dart';
 import '../models/xtream_models.dart';
 import 'api_exception.dart';
 import 'device.dart';
-import 'server_endpoint.dart';
 
 enum _ParseKind { categories, live, vod, series }
 
@@ -28,26 +27,18 @@ dynamic _parseInIsolate((String, _ParseKind) args) {
 
 /// Cliente de la API compatible Xtream Codes (`player_api.php`).
 class XtreamApi {
-  /// Dirección del servidor (compartida: si el portal cambia de dirección se actualiza sola).
-  final ServerEndpoint endpoint;
+  final String baseUrl;
   final String username;
   final String password;
   final http.Client _client;
-
-  /// Si una petición falla por red, se llama; con `true` se repite una vez con la dirección nueva.
-  ConnectionLostHandler? onConnectionLost;
 
   XtreamApi({
     required String serverUrl,
     required this.username,
     required this.password,
     http.Client? client,
-    ServerEndpoint? endpoint,
-    this.onConnectionLost,
-  })  : endpoint = endpoint ?? ServerEndpoint(serverUrl),
+  })  : baseUrl = normalizeServerUrl(serverUrl),
         _client = client ?? http.Client();
-
-  String get baseUrl => endpoint.url;
 
   static Map<String, String> get defaultHeaders => {
         ...Device.headers,
@@ -55,8 +46,25 @@ class XtreamApi {
       };
 
   /// Normaliza la URL: agrega `http://`, quita `/` final y `player_api.php`.
-  static String normalizeServerUrl(String input) =>
-      ServerEndpoint.normalize(input);
+  static String normalizeServerUrl(String input) {
+    var s = input.trim();
+    if (s.isEmpty) return s;
+    if (!s.contains('://')) s = 'http://$s';
+    final lower = s.toLowerCase();
+    for (final suffix in ['/player_api.php', '/get.php', '/panel_api.php']) {
+      final idx = lower.indexOf(suffix);
+      if (idx >= 0) {
+        s = s.substring(0, idx);
+        break;
+      }
+    }
+    final q = s.indexOf('?');
+    if (q >= 0) s = s.substring(0, q);
+    while (s.endsWith('/')) {
+      s = s.substring(0, s.length - 1);
+    }
+    return s;
+  }
 
   static bool isValidServerUrl(String input) {
     final uri = Uri.tryParse(normalizeServerUrl(input));
@@ -75,26 +83,17 @@ class XtreamApi {
   }
 
   Future<String> _getBody(Map<String, String> params,
-      {Duration timeout = AppConfig.apiTimeout, bool retried = false}) async {
+      {Duration timeout = AppConfig.apiTimeout}) async {
     try {
       final res = await _client
           .get(_apiUri(params), headers: defaultHeaders)
           .timeout(timeout);
       if (res.statusCode != 200) {
-        throw ApiException.forResponse(res.statusCode,
-            utf8.decode(res.bodyBytes, allowMalformed: true));
+        throw ApiException.forStatus(res.statusCode);
       }
       return utf8.decode(res.bodyBytes, allowMalformed: true);
     } catch (e) {
-      final error = ApiException.from(e);
-      final handler = onConnectionLost;
-      if (!retried &&
-          handler != null &&
-          error.canRelocate &&
-          await handler(error).catchError((Object _) => false)) {
-        return _getBody(params, timeout: timeout, retried: true);
-      }
-      throw error;
+      throw ApiException.from(e);
     }
   }
 
