@@ -109,8 +109,11 @@ Para no escribir IP y puerto, la app busca el portal en la red local de dos form
    `{"type":"iptv-portal","name","version","url":"http://<IP de su interfaz en esa red>:<puerto>","host","port","ports":[…],"public_url"}`.
    Solo responde a IPs de red local (privadas, CGNAT, link-local) y como máximo 5 veces por segundo por IP.
    Puerto configurable con `DISCOVERY_PORT`; se apaga con `DISCOVERY_ENABLED=false`.
-2. **Barrido HTTP** (si la red bloquea la difusión): `GET http://<IP>:<puerto>/api/client/ping` a las IPs de la subred del
-   equipo (/24) en los puertos 8080, 25461 y 80, con tiempo de espera corto; es un portal si responde `"type":"iptv-portal"`.
+2. **Barrido** (si la red bloquea la difusión): prueba de conexión TCP rápida (300 ms) a las IPs de la subred real del equipo
+   (en Android se lee la máscara y la puerta de enlace; redes mayores que /24 hasta /16: primero su /24, luego el del router y
+   después los demás por cercanía) en los puertos 25461, 8080 y 80, y `GET /api/client/ping` solo en los abiertos; es un portal
+   si responde `"type":"iptv-portal"`. Un 404 "Los clientes usan el puerto N" (puerto del panel) lleva al puerto N del mismo equipo.
+   También se envía la difusión UDP a la dirección de difusión real de cada red (p. ej. `172.27.31.255`).
 
 La URL elegida se usa como servidor Xtream (`http://IP:puerto`). Fuera de la red local hay que escribirla (o usar `public_url`).
 

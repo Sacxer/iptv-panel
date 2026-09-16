@@ -134,14 +134,42 @@ adb install -r build/app/outputs/flutter-apk/app-arm64-v8a-portal-release.apk
 Al abrir la app por primera vez, pulse **Agregar perfil** y elija el tipo:
 
 - **Xtream Codes**
-  - *URL del servidor*: incluya `http://` y el **puerto**, por ejemplo `http://tv.midominio.com:25461`
-    (en pruebas locales, la IP de la PC en la red: `http://192.168.1.10:8080`; el teléfono no puede usar `localhost`).
+  - *URL del servidor*: incluya `http://` y el **puerto de clientes**, por ejemplo `http://tv.midominio.com:25461`
+    (en la red local, la IP de la PC: `http://192.168.1.10:25461`; el teléfono no puede usar `localhost`).
+    Si el portal separa panel y clientes, el puerto del panel (8080) no sirve para la app.
+  - **Buscar servidor en mi red** lo encuentra solo (ver abajo).
   - *Usuario* y *Contraseña* entregados por su proveedor.
 - **Lista M3U (URL)**: pegue el enlace completo, por ejemplo `http://servidor:puerto/get.php?username=U&password=P&type=m3u_plus&output=ts`.
 - **Lista M3U (archivo)**: seleccione un archivo `.m3u` / `.m3u8` del equipo.
 
 Mensajes de error comunes: "Usuario o contraseña incorrectos", "Su suscripción ha vencido", "Su cuenta está suspendida",
-"No se pudo conectar con el servidor" (revise URL, puerto y red).
+"No se pudo conectar con el servidor" (revise URL, puerto y red; el botón **Buscar servidor** lo busca en otras direcciones).
+
+### Buscar el servidor en la red
+
+- UDP (`IPTV-DISCOVER v1` al puerto 25460) a `255.255.255.255` y a la difusión **real** de cada red, y a la vez un barrido.
+- En Android la máscara y la puerta de enlace se leen del sistema (canal `iptv_player/network`, solo
+  `ACCESS_NETWORK_STATE`); en otras plataformas se asume /24.
+- Barrido: conexión TCP rápida (300 ms, 96 a la vez) a los puertos 25461, 8080 y 80, y `GET /api/client/ping` solo si
+  está abierto. Cada puerto recorre la red por tramos /24: primero el del equipo, luego el del router y después los
+  vecinos por cercanía; redes grandes se recortan a la /16 del equipo. Límite: 8 s en una /24, hasta 30 s en redes grandes,
+  con progreso ("Buscando en 172.27.0.0/19… 35 %") y Cancelar.
+- Si responde el puerto del panel ("Los clientes usan el puerto N"), se usa el mismo equipo con el puerto N.
+
+### Si el servidor cambia de dirección (portal propio, desde 1.0.2)
+
+- Tras cada `/api/client/info` la app guarda en el perfil el **id** del portal, sus direcciones (`server.urls`) y los
+  puertos de clientes.
+- Si una petición falla por red (o responde el puerto del panel), primero comprueba la dirección actual; si no responde
+  como ese portal, prueba el mismo equipo con el puerto de clientes (caso panel), las direcciones guardadas y por último
+  la red local, **aceptando solo el mismo id**. Al encontrarlo actualiza el perfil, repite la petición y avisa
+  "Servidor encontrado en la nueva dirección". Lo mismo al abrir la app, en el sondeo del portal cada 5 min y cuando el
+  reproductor no logra reconectar (sigue con la dirección nueva).
+- Una búsqueda a la vez y como máximo una cada 20 s (el botón **Buscar servidor** no espera).
+- Listas M3U y servidores Xtream que no son el portal: sin cambios; ahí **Buscar servidor** abre la búsqueda en la red y
+  el usuario elige.
+- Código: `lib/services/portal_relocator.dart`, `server_discovery.dart`, `server_endpoint.dart` (dirección compartida),
+  `lib/providers/session_provider.dart`.
 
 ## Personalizar la marca
 
@@ -231,7 +259,8 @@ lib/
   models/               Perfil, contenido, Xtream (tolerante a números/strings), portal
   services/             xtream_api, m3u_parser (isolate), portal_api, heartbeat, epg_service,
                         content_source (Xtream/M3U), storage, device (cabeceras y ventana),
-                        server_discovery (buscar el portal en la red), distribution (play/portal),
+                        server_discovery (buscar el portal en la red), native_network (máscara real en Android),
+                        portal_relocator y server_endpoint (reencontrar el portal), distribution (play/portal),
                         app_update, apk_downloader, apk_installer (actualizador)
   providers/            perfiles, sesión, biblioteca (favoritos/recientes), portal, actualizaciones
   screens/              perfiles, inicio, en vivo, catálogo, detalles, reproductor, buscar, mensajes, cuenta
@@ -239,7 +268,8 @@ lib/
 android/app/src/play/   Versión Google Play (sin actualizador)
 android/app/src/portal/ Versión portal: permiso de instalación, canal nativo y proveedor del APK
 scripts/                publicar.ps1 (compilar y subir al portal), clave-para-play.ps1 (llave para Play)
-test/                   Parser M3U, modelos Xtream, EPG, avisos, descubrimiento, actualizaciones y descarga
+android/app/src/main/   NetworkInfoChannel.kt (redes con máscara y puerta de enlace)
+test/                   Parser M3U, modelos Xtream, EPG, avisos, descubrimiento, reconexión, actualizaciones y descarga
 ```
 
 ## Notas

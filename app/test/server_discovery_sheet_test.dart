@@ -13,7 +13,9 @@ class FakeDiscovery extends ServerDiscovery {
   @override
   Future<DiscoveryResult> discover({
     DiscoveryUpdate? onUpdate,
+    DiscoveryProgressCallback? onProgress,
     DiscoveryCancelToken? cancelToken,
+    String? expectedId,
   }) async {
     if (result.servers.isNotEmpty) onUpdate?.call(result.servers);
     return result;

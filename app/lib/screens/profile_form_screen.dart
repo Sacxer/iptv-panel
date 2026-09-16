@@ -152,13 +152,24 @@ class _ProfileFormScreenState extends State<ProfileFormScreen> {
           name = _fileName.isNotEmpty ? _fileName : 'Lista local';
       }
     }
+    final serverUrl = _type == ProfileType.xtream
+        ? XtreamApi.normalizeServerUrl(_server.text)
+        : '';
+    // Datos del portal: se conservan si el servidor no cambió. Si el usuario escribió otra
+    // dirección, se olvidan (la app no debe "volver" sola al servidor anterior).
+    final old = widget.profile;
+    final keepPortal = old != null &&
+        _type == ProfileType.xtream &&
+        old.isXtream &&
+        XtreamApi.normalizeServerUrl(old.serverUrl) == serverUrl;
     final profile = Profile(
       id: _id,
       name: name,
       type: _type,
-      serverUrl: _type == ProfileType.xtream
-          ? XtreamApi.normalizeServerUrl(_server.text)
-          : '',
+      portalId: keepPortal ? old.portalId : '',
+      portalUrls: keepPortal ? old.portalUrls : const [],
+      clientPorts: keepPortal ? old.clientPorts : const [],
+      serverUrl: serverUrl,
       username: _type == ProfileType.xtream ? _user.text.trim() : '',
       password: _type == ProfileType.xtream ? _pass.text : '',
       m3uUrl: _type == ProfileType.m3uUrl ? _m3u.text.trim() : '',

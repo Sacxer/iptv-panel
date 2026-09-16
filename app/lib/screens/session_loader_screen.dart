@@ -11,6 +11,7 @@ import '../providers/session_provider.dart';
 import '../theme.dart';
 import '../widgets/focusable_card.dart';
 import '../widgets/portal_widgets.dart';
+import '../widgets/server_search_button.dart';
 import 'home_screen.dart';
 import 'profile_form_screen.dart';
 
@@ -40,15 +41,22 @@ class _SessionLoaderScreenState extends State<SessionLoaderScreen> {
     final library = context.read<LibraryProvider>();
     final profiles = context.read<ProfilesProvider>();
 
+    // El perfil guardado puede tener una dirección más nueva (se reencontró el portal).
+    _profile = profiles.byId(_profile.id) ?? _profile;
     final ok = await session.login(_profile);
-    if (!mounted || _cancelled) return;
+    if (!mounted || _cancelled) {
+      return;
+    }
+    // Si el portal apareció en otra dirección, la sesión ya actualizó el perfil.
+    final current = session.profile ?? _profile;
+    if (current.id == _profile.id) setState(() => _profile = current);
     if (!ok) return;
 
     await profiles.markUsed(_profile);
     library.load(_profile.id);
     if (_profile.isXtream) {
       // Detección del portal (silenciosa si no aplica).
-      await portal.start(_profile).timeout(
+      await portal.start(session.profile ?? _profile).timeout(
             const Duration(seconds: 15),
             onTimeout: () {},
           );
@@ -87,6 +95,7 @@ class _SessionLoaderScreenState extends State<SessionLoaderScreen> {
         body = _ErrorPanel(
           profile: _profile,
           message: session.error ?? 'Error desconocido',
+          canSearchServer: _profile.isXtream && session.errorCanRelocate,
           onRetry: _start,
           onEdit: _editProfile,
           onBack: _back,
@@ -125,6 +134,7 @@ class _SessionLoaderScreenState extends State<SessionLoaderScreen> {
               const SizedBox(height: 20),
               Text(
                 session.progress.isEmpty ? 'Cargando…' : session.progress,
+                textAlign: TextAlign.center,
                 style: const TextStyle(color: AppColors.textSecondary),
               ),
               const SizedBox(height: 28),
@@ -151,6 +161,7 @@ class _SessionLoaderScreenState extends State<SessionLoaderScreen> {
 class _ErrorPanel extends StatelessWidget {
   final Profile profile;
   final String message;
+  final bool canSearchServer;
   final VoidCallback onRetry;
   final VoidCallback onEdit;
   final VoidCallback onBack;
@@ -158,6 +169,7 @@ class _ErrorPanel extends StatelessWidget {
   const _ErrorPanel({
     required this.profile,
     required this.message,
+    required this.canSearchServer,
     required this.onRetry,
     required this.onEdit,
     required this.onBack,
@@ -198,6 +210,7 @@ class _ErrorPanel extends StatelessWidget {
                     autofocus: true,
                     onPressed: onRetry,
                   ),
+                  if (canSearchServer) ServerSearchButton(onFound: onRetry),
                   TvButton(
                     label: 'Editar perfil',
                     icon: Icons.edit_outlined,

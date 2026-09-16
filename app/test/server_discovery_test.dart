@@ -305,6 +305,302 @@ void main() {
     });
   });
 
+  group('Redes más grandes que /24', () {
+    List<String> labels(List<SweepBlock> blocks) =>
+        [for (final b in blocks) b.label];
+
+    test('/19 con puerta de enlace: propia, router y vecinas por cercanía', () {
+      const net = LocalNetwork(
+        interfaceName: 'wlan0',
+        address: '172.27.14.218',
+        prefixLength: 19,
+        gateway: '172.27.0.1',
+      );
+      expect(net.broadcast, '172.27.31.255');
+      expect(net.cidr, '172.27.0.0/19');
+      final blocks = ServerDiscovery.sweepBlocks(net);
+      expect(blocks, hasLength(32));
+      expect(labels(blocks).take(6), [
+        '172.27.14.0/24', // la del teléfono
+        '172.27.0.0/24', // la del router
+        '172.27.13.0/24',
+        '172.27.15.0/24',
+        '172.27.12.0/24',
+        '172.27.16.0/24',
+      ]);
+      expect(blocks.last.label, '172.27.31.0/24');
+      expect(blocks.every((b) => b.network == '172.27.0.0/19'), isTrue);
+      // Dentro de una /19, x.x.14.0 y x.x.14.255 son equipos válidos.
+      expect(blocks.first.hosts.first, '172.27.14.0');
+      expect(blocks.first.hosts.last, '172.27.14.255');
+      expect(blocks.first.count, 256);
+      // Sin dirección de red ni de difusión.
+      expect(blocks[1].hosts.first, '172.27.0.1');
+      expect(blocks.last.hosts.last, '172.27.31.254');
+      expect(blocks.fold<int>(0, (n, b) => n + b.count), 8190);
+      expect(ServerDiscovery.udpTargetsFor(const [net]),
+          ['255.255.255.255', '172.27.31.255']);
+    });
+
+    test('/22 sin puerta de enlace conocida', () {
+      const net = LocalNetwork(
+          interfaceName: 'eth0', address: '10.0.4.10', prefixLength: 22);
+      expect(net.broadcast, '10.0.7.255');
+      final blocks = ServerDiscovery.sweepBlocks(net);
+      expect(labels(blocks),
+          ['10.0.4.0/24', '10.0.5.0/24', '10.0.6.0/24', '10.0.7.0/24']);
+      expect(blocks.fold<int>(0, (n, b) => n + b.count), 1022);
+      expect(blocks.first.hosts.first, '10.0.4.1');
+    });
+
+    test('/16 completa y redes aún más grandes recortadas a /16', () {
+      const net16 = LocalNetwork(
+          interfaceName: 'wlan0', address: '192.168.77.5', prefixLength: 16);
+      expect(net16.broadcast, '192.168.255.255');
+      final blocks = ServerDiscovery.sweepBlocks(net16);
+      expect(blocks, hasLength(256));
+      expect(labels(blocks).take(3),
+          ['192.168.77.0/24', '192.168.76.0/24', '192.168.78.0/24']);
+      expect(blocks.fold<int>(0, (n, b) => n + b.count), 65534);
+
+      const net12 = LocalNetwork(
+          interfaceName: 'wlan0', address: '172.20.3.4', prefixLength: 12);
+      expect(net12.broadcast, '172.31.255.255'); // la difusión es la real
+      final clipped = ServerDiscovery.sweepBlocks(net12);
+      expect(clipped, hasLength(256));
+      expect(clipped.first.network, '172.20.0.0/16');
+    });
+
+    test('redes pequeñas: solo sus equipos', () {
+      final small = ServerDiscovery.sweepBlocks(const LocalNetwork(
+          interfaceName: 'wlan0', address: '192.168.1.1', prefixLength: 30));
+      expect(small.single.hosts.toList(), ['192.168.1.1', '192.168.1.2']);
+      final sweep24 = ServerDiscovery.sweepHostsFor(const [
+        LocalNetwork(interfaceName: 'wlan0', address: '192.168.1.23'),
+      ]);
+      expect(sweep24, ServerDiscovery.hostsInSubnet24('192.168.1.23'));
+    });
+
+    test('límite de tiempo según el tamaño de la red', () {
+      const d = ServerDiscovery();
+      expect(d.autoLimit(3 * 254), ServerDiscovery.shortestLimit);
+      expect(d.autoLimit(3 * 8190), ServerDiscovery.longestLimit);
+      expect(d.autoLimit(0), ServerDiscovery.shortestLimit);
+    });
+
+    test('redes de Android: máscara real, sin datos móviles ni VPN', () {
+      final nets = ServerDiscovery.fromPlatformInfo([
+        {
+          'interface': 'rmnet_data0',
+          'transport': 'cellular',
+          'active': false,
+          'addresses': [
+            {'address': '10.45.3.2', 'prefix': 30},
+          ],
+          'gateways': ['10.45.3.1'],
+        },
+        {
+          'interface': 'tun0',
+          'transport': 'vpn',
+          'active': true,
+          'addresses': [
+            {'address': '10.8.0.2', 'prefix': 24},
+          ],
+        },
+        {
+          'interface': 'eth0',
+          'transport': 'ethernet',
+          'active': false,
+          'addresses': [
+            {'address': '192.168.1.5', 'prefix': 24},
+          ],
+          'gateways': [],
+        },
+        {
+          'interface': 'wlan0',
+          'transport': 'wifi',
+          'active': true,
+          'addresses': [
+            {'address': '172.27.14.218', 'prefix': 19},
+            {'address': '8.8.8.8', 'prefix': 24}, // pública: no
+          ],
+          'gateways': ['172.27.0.1'],
+        },
+        {
+          'interface': 'weird0',
+          'transport': 'other',
+          'addresses': [
+            {'address': '192.168.50.2', 'prefix': 0},
+          ],
+        },
+      ]);
+      expect(nets.map((n) => n.address),
+          ['172.27.14.218', '192.168.1.5', '192.168.50.2']);
+      expect(nets.first.prefixLength, 19);
+      expect(nets.first.gateway, '172.27.0.1');
+      expect(nets.first.preferred, isTrue);
+      expect(nets.last.prefixLength, 24); // máscara inválida → /24
+      expect(nets.last.preferred, isFalse);
+      expect(ServerDiscovery.udpTargetsFor(nets),
+          ['255.255.255.255', '172.27.31.255', '192.168.1.255', '192.168.50.255']);
+    });
+
+    test('barrido: orden por puerto y tramo, conexión TCP antes del ping',
+        () async {
+      final tcpCalls = <(String, int)>[];
+      final pinged = <(String, int)>[];
+      final result = await ServerDiscovery(
+        enableUdp: false,
+        httpPorts: const [25461, 8080],
+        concurrency: 1,
+        maxDuration: const Duration(seconds: 20),
+        networkLister: () async => const [
+          LocalNetwork(
+            interfaceName: 'wlan0',
+            address: '172.27.14.218',
+            prefixLength: 22,
+            gateway: '172.27.12.1',
+            preferred: true,
+          ),
+        ],
+        tcpProbe: (host, port) async {
+          tcpCalls.add((host, port));
+          return host == '172.27.13.7' && port == 8080;
+        },
+        prober: (host, port) async {
+          pinged.add((host, port));
+          return DiscoveredServer(
+              name: 'Mi IPTV',
+              url: 'http://$host:$port',
+              id: 'p1',
+              source: DiscoverySource.http);
+        },
+      ).discover();
+
+      expect(tcpCalls, hasLength(2 * 1022));
+      expect(tcpCalls[0], ('172.27.14.0', 25461)); // la propia primero
+      expect(tcpCalls[256], ('172.27.12.1', 25461)); // luego la del router
+      expect(tcpCalls[256 + 255], ('172.27.13.0', 25461)); // la vecina más cercana
+      expect(tcpCalls[256 + 255 + 256], ('172.27.15.0', 25461));
+      expect(tcpCalls[1022], ('172.27.14.0', 8080)); // segundo puerto
+      expect(pinged, [('172.27.13.7', 8080)]); // solo el puerto abierto
+      expect(result.servers.single.url, 'http://172.27.13.7:8080');
+    });
+
+    test('con id buscado termina en cuanto aparece ese portal', () async {
+      var calls = 0;
+      final progress = <DiscoveryProgress>[];
+      final result = await ServerDiscovery(
+        enableUdp: false,
+        httpPorts: const [25461],
+        concurrency: 2,
+        maxDuration: const Duration(seconds: 20),
+        networkLister: () async => const [
+          LocalNetwork(
+              interfaceName: 'wlan0', address: '10.1.0.9', prefixLength: 16),
+        ],
+        tcpProbe: (host, port) async {
+          calls++;
+          await Future<void>.delayed(const Duration(milliseconds: 1));
+          return host == '10.1.0.20' || host == '10.1.0.40';
+        },
+        prober: (host, port) async => DiscoveredServer(
+          name: host,
+          url: 'http://$host:$port',
+          id: host == '10.1.0.40' ? 'buscado' : 'otro',
+          source: DiscoverySource.http,
+        ),
+      ).discover(expectedId: 'buscado', onProgress: progress.add);
+
+      expect(result.servers.map((s) => s.id), ['otro', 'buscado']);
+      expect(calls, lessThan(60)); // de 65534: paró al encontrarlo
+      expect(progress.first.label, 'Buscando en 10.1.0.0/16… 0 %');
+      expect(progress.first.total, 65534);
+    });
+
+    test('puerto del panel: sigue la pista al puerto de clientes', () async {
+      final clients = await httpServer((s) => jsonEncode({
+            'type': 'iptv-portal',
+            'id': 'p1',
+            'name': 'Mi IPTV',
+            'client_ports': [s.port],
+          }));
+      final panel = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      panel.listen((req) {
+        req.response
+          ..statusCode = 404
+          ..headers.contentType = ContentType.json
+          ..write(jsonEncode({
+            'error':
+                'Este es el puerto del panel. Los clientes usan el puerto ${clients.port}.'
+          }))
+          ..close();
+      });
+      addTearDown(() async {
+        await clients.close(force: true);
+        await panel.close(force: true);
+      });
+
+      final result = await ServerDiscovery(
+        enableUdp: false,
+        sweepHosts: const ['127.0.0.1'],
+        httpPorts: [panel.port],
+        interfaceLister: noInterfaces,
+      ).discover();
+
+      expect(result.servers.single.url, 'http://127.0.0.1:${clients.port}');
+      expect(result.servers.single.id, 'p1');
+      expect(
+          ServerDiscovery.panelPortHint(
+              '{"error":"Este es el puerto del panel. Los clientes usan el puerto 25461."}'),
+          25461);
+      expect(ServerDiscovery.panelPortHint('Not found'), isNull);
+      expect(ServerDiscovery.panelPortHint('Los clientes usan el puerto 99999'),
+          isNull);
+    });
+  });
+
+  group('Identidad del portal (id)', () {
+    test('UDP y ping traen el id del portal', () {
+      final udp = ServerDiscovery.parseUdpReply(bytes({
+        ...udpReply(url: 'http://192.168.1.46:25461', ports: [25461, 8080]),
+        'id': 'portal-1',
+        'panel_port': 8080,
+      }))!;
+      expect(udp.id, 'portal-1');
+      expect(udp.url, 'http://192.168.1.46:25461');
+      final ping = ServerDiscovery.parsePingResponse(
+          jsonEncode({'type': 'iptv-portal', 'id': 'portal-1'}),
+          '192.168.1.46',
+          25461)!;
+      expect(ping.id, 'portal-1');
+      expect(ServerDiscovery.parseUdpReply(bytes(udpReply()))!.id, isNull);
+    });
+
+    test('dos portales en el mismo equipo no se unen; el id se completa al unir',
+        () {
+      final merged = ServerDiscovery.mergeServers([
+        const DiscoveredServer(
+            name: 'A', url: 'http://192.168.1.46:8080', ports: [8080, 25461], id: 'a'),
+        const DiscoveredServer(
+            name: 'B', url: 'http://192.168.1.46:25461', ports: [25461], id: 'b',
+            source: DiscoverySource.http),
+        const DiscoveredServer(
+            name: 'A', url: 'http://192.168.1.46:8080', ports: [8080],
+            source: DiscoverySource.http),
+      ]);
+      expect(merged.map((s) => s.id), ['a', 'b']);
+
+      final filled = ServerDiscovery.mergeServers([
+        const DiscoveredServer(name: 'A', url: 'http://10.0.0.2:8080'),
+        const DiscoveredServer(
+            name: 'A', url: 'http://10.0.0.2:8080', id: 'a',
+            source: DiscoverySource.http),
+      ]);
+      expect(filled.single.id, 'a');
+    });
+  });
+
   group('Unión de resultados', () {
     test('misma URL: gana UDP y se completan datos', () {
       final merged = ServerDiscovery.mergeServers([
@@ -368,6 +664,7 @@ void main() {
         enableSweep: false,
         interfaceLister: noInterfaces,
         minDuration: const Duration(milliseconds: 300),
+        grace: const Duration(milliseconds: 300),
         udpDuration: const Duration(seconds: 3),
       ).discover(onUpdate: updates.add);
 

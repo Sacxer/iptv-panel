@@ -359,6 +359,15 @@ class _PlayerScreenState extends State<PlayerScreen>
     }
     setState(() => _reconnecting = true);
     _retryTimer = Timer(Duration(seconds: 2 * _retries), _open);
+    if (_retries == 1 && _session.source is XtreamSource) {
+      // ¿Cambió la dirección del portal? Si aparece en otra, reconectar ya con la nueva
+      // (la URL del video se arma con la dirección compartida de la sesión).
+      unawaited(_session.checkServer().then((moved) {
+        if (!moved || !mounted || _fatalError != null || _isBlocked) return;
+        _retryTimer?.cancel();
+        _open();
+      }));
+    }
   }
 
   void _manualRetry() {

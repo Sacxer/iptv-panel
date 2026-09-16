@@ -1,3 +1,4 @@
+import '../services/portal_relocator.dart';
 import 'json_utils.dart';
 
 enum ProfileType { xtream, m3uUrl, m3uFile }
@@ -37,6 +38,16 @@ class Profile {
 
   final int createdAt;
 
+  /// Portal propio: identificador (de `/api/client/info` → `server.id`). '' si no es un portal
+  /// o aún no se conoce.
+  final String portalId;
+
+  /// Portal propio: todas sus direcciones conocidas, por preferencia (`server.urls`).
+  final List<String> portalUrls;
+
+  /// Portal propio: puertos para clientes (`client_ports` del ping).
+  final List<int> clientPorts;
+
   const Profile({
     required this.id,
     required this.name,
@@ -48,9 +59,17 @@ class Profile {
     this.filePath = '',
     this.fileName = '',
     this.createdAt = 0,
+    this.portalId = '',
+    this.portalUrls = const [],
+    this.clientPorts = const [],
   });
 
   bool get isXtream => type == ProfileType.xtream;
+
+  /// Datos para reencontrar el portal si cambia de dirección.
+  PortalIdentity get portalIdentity => isXtream
+      ? PortalIdentity(id: portalId, urls: portalUrls, clientPorts: clientPorts)
+      : const PortalIdentity();
 
   String get subtitle {
     switch (type) {
@@ -72,6 +91,9 @@ class Profile {
     String? m3uUrl,
     String? filePath,
     String? fileName,
+    String? portalId,
+    List<String>? portalUrls,
+    List<int>? clientPorts,
   }) {
     return Profile(
       id: id,
@@ -84,6 +106,9 @@ class Profile {
       filePath: filePath ?? this.filePath,
       fileName: fileName ?? this.fileName,
       createdAt: createdAt,
+      portalId: portalId ?? this.portalId,
+      portalUrls: portalUrls ?? this.portalUrls,
+      clientPorts: clientPorts ?? this.clientPorts,
     );
   }
 
@@ -98,6 +123,9 @@ class Profile {
         'filePath': filePath,
         'fileName': fileName,
         'createdAt': createdAt,
+        if (portalId.isNotEmpty) 'portalId': portalId,
+        if (portalUrls.isNotEmpty) 'portalUrls': portalUrls,
+        if (clientPorts.isNotEmpty) 'clientPorts': clientPorts,
       };
 
   factory Profile.fromJson(Map<String, dynamic> j) {
@@ -116,6 +144,12 @@ class Profile {
       filePath: str(j['filePath']),
       fileName: str(j['fileName']),
       createdAt: asInt(j['createdAt']) ?? 0,
+      portalId: str(j['portalId']),
+      portalUrls: asStringList(j['portalUrls']),
+      clientPorts: [
+        for (final p in asList(j['clientPorts']))
+          if (asInt(p) case final n? when n > 0 && n < 65536) n,
+      ],
     );
   }
 }

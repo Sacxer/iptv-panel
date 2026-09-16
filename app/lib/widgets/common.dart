@@ -95,11 +95,15 @@ class ErrorView extends StatelessWidget {
   final VoidCallback? onRetry;
   final String title;
 
+  /// Acción adicional junto a "Reintentar" (p. ej. "Buscar servidor").
+  final Widget? secondary;
+
   const ErrorView({
     super.key,
     required this.message,
     this.onRetry,
     this.title = 'Algo salió mal',
+    this.secondary,
   });
 
   @override
@@ -122,14 +126,23 @@ class ErrorView extends StatelessWidget {
               Text(message,
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: AppColors.textSecondary)),
-              if (onRetry != null) ...[
+              if (onRetry != null || secondary != null) ...[
                 const SizedBox(height: 20),
-                TvButton(
-                  label: 'Reintentar',
-                  icon: Icons.refresh,
-                  primary: true,
-                  autofocus: true,
-                  onPressed: onRetry,
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    if (onRetry != null)
+                      TvButton(
+                        label: 'Reintentar',
+                        icon: Icons.refresh,
+                        primary: true,
+                        autofocus: true,
+                        onPressed: onRetry,
+                      ),
+                    ?secondary,
+                  ],
                 ),
               ],
             ],

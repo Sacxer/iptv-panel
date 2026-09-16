@@ -251,6 +251,35 @@ class PortalMessage {
   }
 }
 
+/// Identidad y direcciones del portal (`server` en `/api/client/info`).
+class PortalServer {
+  final String id;
+  final String name;
+
+  /// Direcciones por preferencia (`http://host:puerto`).
+  final List<String> urls;
+
+  const PortalServer({this.id = '', this.name = '', this.urls = const []});
+
+  static PortalServer? fromJson(dynamic json) {
+    if (json is! Map) return null;
+    final j = asMap(json);
+    final urls = <String>[];
+    for (final u in asList(j['urls'])) {
+      final s = nonEmpty(u);
+      if (s == null) continue;
+      final clean = s.endsWith('/') ? s.replaceAll(RegExp(r'/+$'), '') : s;
+      if ((clean.startsWith('http://') || clean.startsWith('https://')) &&
+          !urls.contains(clean)) {
+        urls.add(clean);
+      }
+    }
+    final server =
+        PortalServer(id: str(j['id']).trim(), name: str(j['name']), urls: urls);
+    return server.id.isEmpty && server.urls.isEmpty ? null : server;
+  }
+}
+
 /// Respuesta de `GET /api/client/info`.
 class PortalInfo {
   final String serverName;
@@ -261,6 +290,9 @@ class PortalInfo {
   final List<PortalMessage> messages;
   final int unreadMessages;
 
+  /// Identidad del portal (portales desde la app 1.0.2; `null` en los anteriores).
+  final PortalServer? server;
+
   const PortalInfo({
     this.serverName = '',
     this.user = const PortalUser(),
@@ -269,6 +301,7 @@ class PortalInfo {
     this.noticeSettings = const NoticeSettings(),
     this.messages = const [],
     this.unreadMessages = 0,
+    this.server,
   });
 
   PortalInfo copyWith({List<PortalMessage>? messages, int? unreadMessages}) =>
@@ -280,6 +313,7 @@ class PortalInfo {
         noticeSettings: noticeSettings,
         messages: messages ?? this.messages,
         unreadMessages: unreadMessages ?? this.unreadMessages,
+        server: server,
       );
 
   factory PortalInfo.fromJson(dynamic json) {
@@ -299,6 +333,7 @@ class PortalInfo {
       messages: messages,
       unreadMessages: asInt(j['unread_messages']) ??
           messages.where((m) => !m.read).length,
+      server: PortalServer.fromJson(j['server']),
     );
   }
 }

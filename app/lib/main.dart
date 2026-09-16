@@ -13,11 +13,31 @@ import 'providers/session_provider.dart';
 import 'screens/profiles_screen.dart';
 import 'services/device.dart';
 import 'services/distribution.dart';
+import 'services/native_network.dart';
 import 'services/storage.dart';
 import 'theme.dart';
 import 'widgets/app_update_widgets.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+/// Para avisos breves que no dependen de una pantalla (p. ej. "Servidor encontrado…").
+final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
+    GlobalKey<ScaffoldMessengerState>();
+
+void showGlobalNotice(String message) {
+  scaffoldMessengerKey.currentState
+    ?..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(
+      content: Row(
+        children: [
+          const Icon(Icons.wifi_tethering_rounded, color: AppColors.success),
+          const SizedBox(width: 12),
+          Expanded(child: Text(message)),
+        ],
+      ),
+      duration: const Duration(seconds: 4),
+    ));
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -39,6 +59,7 @@ Future<void> main() async {
   }
 
   await Device.init();
+  NativeNetworkInfo.install();
   final storage = await Storage.init();
   runApp(IptvApp(storage: storage));
 }
@@ -66,9 +87,18 @@ class IptvApp extends StatelessWidget {
       providers: [
         Provider<Storage>.value(value: storage),
         ChangeNotifierProvider(create: (_) => ProfilesProvider(storage)),
-        ChangeNotifierProvider(create: (_) => SessionProvider(storage)),
+        ChangeNotifierProvider(
+          create: (ctx) => SessionProvider(
+            storage,
+            profiles: ctx.read<ProfilesProvider>(),
+            onNotice: showGlobalNotice,
+          ),
+        ),
         ChangeNotifierProvider(create: (_) => LibraryProvider(storage)),
-        ChangeNotifierProvider(create: (_) => PortalProvider(storage)),
+        ChangeNotifierProvider(
+          create: (ctx) =>
+              PortalProvider(storage, session: ctx.read<SessionProvider>()),
+        ),
         if (AppDistribution.updaterEnabled && _updater)
           ChangeNotifierProvider(
             lazy: false,
@@ -87,6 +117,7 @@ class IptvApp extends StatelessWidget {
         darkTheme: AppTheme.dark(),
         themeMode: ThemeMode.dark,
         navigatorKey: navigatorKey,
+        scaffoldMessengerKey: scaffoldMessengerKey,
         shortcuts: {
           ...WidgetsApp.defaultShortcuts,
           // OK del control remoto.

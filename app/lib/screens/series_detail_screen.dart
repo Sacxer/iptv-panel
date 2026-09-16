@@ -7,6 +7,7 @@ import '../providers/session_provider.dart';
 import '../services/api_exception.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/server_search_button.dart';
 import '../widgets/focusable_card.dart';
 import 'movie_detail_screen.dart';
 import 'navigation.dart';
@@ -23,6 +24,7 @@ class SeriesDetailScreen extends StatefulWidget {
 class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
   SeriesDetail? _detail;
   String? _error;
+  bool _errorCanRelocate = false;
   bool _loading = true;
   int? _season;
 
@@ -51,6 +53,7 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
       if (!mounted) return;
       setState(() {
         _error = ApiException.from(e).message;
+        _errorCanRelocate = ApiException.from(e).canRelocate;
         _loading = false;
       });
     }
@@ -73,7 +76,11 @@ class _SeriesDetailScreenState extends State<SeriesDetailScreen> {
     if (_loading) {
       body = const LoadingView(message: 'Cargando temporadas…');
     } else if (_error != null) {
-      body = ErrorView(message: _error!, onRetry: _load);
+      body = ErrorView(
+        message: _error!,
+        onRetry: _load,
+        secondary: _errorCanRelocate ? ServerSearchButton(onFound: _load) : null,
+      );
     } else {
       final seasons = d!.seasonNumbers;
       final header = Row(

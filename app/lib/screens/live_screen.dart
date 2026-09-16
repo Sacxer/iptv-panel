@@ -9,6 +9,7 @@ import '../providers/session_provider.dart';
 import '../services/api_exception.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/server_search_button.dart';
 import '../widgets/epg_widgets.dart';
 import '../widgets/focusable_card.dart';
 import '../widgets/media_cards.dart';
@@ -25,6 +26,7 @@ class LiveScreen extends StatefulWidget {
 class _LiveScreenState extends State<LiveScreen> {
   bool _loading = true;
   String? _error;
+  bool _errorCanRelocate = false;
   List<MediaItem> _all = [];
   List<MediaCategory> _cats = [];
   String _selectedCat = MediaCategory.allId;
@@ -77,6 +79,7 @@ class _LiveScreenState extends State<LiveScreen> {
       }
       setState(() {
         _error = ApiException.from(e).message;
+        _errorCanRelocate = ApiException.from(e).canRelocate;
         _loading = false;
       });
     }
@@ -122,7 +125,13 @@ class _LiveScreenState extends State<LiveScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) return const LoadingView(message: 'Cargando canales…');
-    if (_error != null) return ErrorView(message: _error!, onRetry: _load);
+    if (_error != null) {
+      return ErrorView(
+        message: _error!,
+        onRetry: _load,
+        secondary: _errorCanRelocate ? ServerSearchButton(onFound: _load) : null,
+      );
+    }
     if (_all.isEmpty) {
       return RefreshIndicator(
         onRefresh: () => _load(refresh: true),

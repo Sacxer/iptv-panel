@@ -59,6 +59,7 @@ class _ServerDiscoveryPanelState extends State<ServerDiscoveryPanel> {
   _Phase _phase = _Phase.searching;
   List<DiscoveredServer> _servers = const [];
   List<LocalNetwork> _networks = const [];
+  DiscoveryProgress? _progress;
   DiscoveredServer? _selected;
   DiscoveryCancelToken? _token;
 
@@ -91,6 +92,7 @@ class _ServerDiscoveryPanelState extends State<ServerDiscoveryPanel> {
         _phase = _Phase.searching;
         _servers = const [];
         _selected = null;
+        _progress = null;
       });
     }
     _focusLater(_cancelFocus);
@@ -99,6 +101,9 @@ class _ServerDiscoveryPanelState extends State<ServerDiscoveryPanel> {
       cancelToken: token,
       onUpdate: (servers) {
         if (mounted && !token.isCancelled) setState(() => _servers = servers);
+      },
+      onProgress: (progress) {
+        if (mounted && !token.isCancelled) setState(() => _progress = progress);
       },
     );
     if (!mounted || token.isCancelled) return;
@@ -192,9 +197,10 @@ class _ServerDiscoveryPanelState extends State<ServerDiscoveryPanel> {
       _Phase.searching => (
           null,
           'Buscando en la red Wi-Fi…',
-          _servers.isEmpty
-              ? 'Buscando el servidor en la red de este equipo. Tarda unos segundos.'
-              : 'Ya puedes elegir tu servidor mientras termina la búsqueda.',
+          _servers.isNotEmpty
+              ? 'Ya puedes elegir tu servidor mientras termina la búsqueda.'
+              : _progress?.label ??
+                  'Buscando el servidor en la red de este equipo. Tarda unos segundos.',
         ),
       _Phase.found => (
           Icons.wifi_find,
@@ -250,6 +256,17 @@ class _ServerDiscoveryPanelState extends State<ServerDiscoveryPanel> {
               Text(message,
                   style: const TextStyle(
                       fontSize: 14.5, color: AppColors.textSecondary)),
+              if (_phase == _Phase.searching && _progress != null) ...[
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: _progress!.fraction,
+                    minHeight: 6,
+                    backgroundColor: AppColors.surfaceHigh,
+                  ),
+                ),
+              ],
             ],
           ),
         ),

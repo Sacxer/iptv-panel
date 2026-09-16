@@ -7,7 +7,8 @@ import '../models/json_utils.dart';
 import '../models/portal_models.dart';
 import 'api_exception.dart';
 import 'device.dart';
-import 'xtream_api.dart';
+import 'portal_relocator.dart';
+import 'server_endpoint.dart';
 
 /// Respuesta de `POST /api/client/playing`.
 class PlayingResponse {
@@ -28,18 +29,26 @@ class PlayingResponse {
 
 /// Cliente de la API de portal (`/api/client`) — funciones extra opcionales.
 class PortalApi {
-  final String baseUrl;
+  /// Dirección del servidor (compartida con la API Xtream de la sesión).
+  final ServerEndpoint endpoint;
   final String username;
   final String password;
   final http.Client _client;
+
+  /// Si una petición falla por red, se llama; con `true` se repite una vez con la dirección nueva.
+  ConnectionLostHandler? onConnectionLost;
 
   PortalApi({
     required String serverUrl,
     required this.username,
     required this.password,
     http.Client? client,
-  })  : baseUrl = XtreamApi.normalizeServerUrl(serverUrl),
+    ServerEndpoint? endpoint,
+    this.onConnectionLost,
+  })  : endpoint = endpoint ?? ServerEndpoint(serverUrl),
         _client = client ?? http.Client();
+
+  String get baseUrl => endpoint.url;
 
   Map<String, String> get _headers => {
         ...Device.headers,
@@ -50,26 +59,33 @@ class PortalApi {
       {..._headers, 'Content-Type': 'application/json'};
 
   /// `true` si el servidor es el portal propio. Nunca lanza excepción.
-  Future<bool> ping() async {
+  Future<bool> ping() async =>
+      (await pingDetails()).status == PingStatus.portal;
+
+  /// `/api/client/ping` con su identificador y puertos. Nunca lanza excepción.
+  Future<PingResult> pingDetails() async {
     try {
       final res = await _client
           .get(Uri.parse('$baseUrl/api/client/ping'), headers: _headers)
           .timeout(AppConfig.pingTimeout);
-      if (res.statusCode != 200) return false;
-      final json = jsonDecode(utf8.decode(res.bodyBytes, allowMalformed: true));
-      return json is Map && asBool(json['portal']);
+      return PortalRelocator.parsePing(
+          res.statusCode, utf8.decode(res.bodyBytes, allowMalformed: true));
     } catch (_) {
-      return false;
+      return PingResult.unreachable;
     }
   }
 
   dynamic _decode(http.Response res) {
-    if (res.statusCode != 200) throw ApiException.forStatus(res.statusCode);
     final body = utf8.decode(res.bodyBytes, allowMalformed: true);
+    if (res.statusCode != 200) {
+      throw ApiException.forResponse(res.statusCode, body);
+    }
     return body.trim().isEmpty ? const {} : jsonDecode(body);
   }
 
-  Future<PortalInfo> info() async {
+  /// Cuenta, avisos, mensajes y la identidad del portal (`server`).
+  Future<PortalInfo> info({bool retried = false}) async {
+    final usedBase = baseUrl;
     try {
       final uri = Uri.parse('$baseUrl/api/client/info').replace(
         queryParameters: {'username': username, 'password': password},
@@ -79,7 +95,16 @@ class PortalApi {
           .timeout(AppConfig.apiTimeout);
       return PortalInfo.fromJson(_decode(res));
     } catch (e) {
-      throw ApiException.from(e);
+      final error = ApiException.from(e);
+      final handler = onConnectionLost;
+      if (!retried && error.canRelocate) {
+        if (baseUrl != usedBase ||
+            (handler != null &&
+                await handler(error).catchError((Object _) => false))) {
+          return info(retried: true);
+        }
+      }
+      throw error;
     }
   }
 
