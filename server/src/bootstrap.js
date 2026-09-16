@@ -4,6 +4,7 @@ import { purgeStaleConnections } from './lib/access.js';
 import { hashPassword, setJwtSecret } from './lib/auth.js';
 import { getJwtSecret, saveSettings } from './lib/settings.js';
 import { autoConfigurePublicUrl } from './services/network.js';
+import { backfillUrlFollow, initPortSeparation, portalId } from './services/portalAddresses.js';
 import { now, randomString } from './lib/util.js';
 import { markInterruptedBackups, startBackupScheduler } from './services/backup.js';
 import { startBillingScheduler } from './services/billingSync.js';
@@ -21,10 +22,14 @@ import { markInterruptedJobs } from './services/xtreamMigrator.js';
 /** Prepara la base de datos y el estado inicial. Devuelve una función para detener tareas periódicas. */
 export async function bootstrap({ quiet = false } = {}) {
   await migrate();
+  // Antes que cualquier otro ajuste guardado (guardar escribe todos los valores por defecto).
+  await initPortSeparation();
   setJwtSecret(await getJwtSecret(config.jwtSecret));
   await markInterruptedJobs();
   await markInterruptedBackups();
   await autoConfigurePublicUrl(saveSettings, quiet ? () => {} : console.log).catch(() => {});
+  await backfillUrlFollow().catch(() => {});
+  await portalId();
 
   const admins = Number((await db('admins').count({ c: '*' }).first()).c);
   if (admins === 0) {

@@ -12,15 +12,20 @@
 //   FFMPEG_PATH   ruta a ffmpeg (por defecto "ffmpeg")
 //   HLS_DIR       carpeta temporal para HLS (por defecto <tmp>/iptv-node-hls)
 //   IDLE_SECONDS  segundos sin clientes antes de apagar un canal bajo demanda (por defecto 30)
+//   STATE_FILE    dónde guardar las direcciones conocidas del portal (por defecto junto a este archivo)
+//
+// Si el portal cambia de IP, el nodo prueba las demás direcciones que el portal le informó y lo busca en la
+// red local (UDP 25460), reconociéndolo por su identificador. Lo hace al arrancar y cada vez que pierde contacto.
 import { spawn, execFile } from 'node:child_process';
 import crypto from 'node:crypto';
+import dgram from 'node:dgram';
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const VERSION = '1.0.0';
+export const VERSION = '1.1.0';
 
 for (const file of ['/etc/iptv-node.env', path.join(path.dirname(fileURLToPath(import.meta.url)), '.env')]) {
   try {
@@ -39,6 +44,8 @@ const config = {
   hlsDir: process.env.HLS_DIR || path.join(os.tmpdir(), 'iptv-node-hls'),
   idleSeconds: Number(process.env.IDLE_SECONDS || 30),
   heartbeatSeconds: Number(process.env.HEARTBEAT_SECONDS || 10),
+  stateFile: process.env.STATE_FILE || '',
+  discoveryPort: Number(process.env.DISCOVERY_PORT || 25460),
 };
 
 const now = () => Math.floor(Date.now() / 1000);
@@ -48,6 +55,165 @@ function ffmpegCommand(ffmpegPath, args) {
   return /\.m?js$/i.test(ffmpegPath) ? [process.execPath, [ffmpegPath, ...args]] : [ffmpegPath, args];
 }
 const log = (...args) => console.log(new Date().toISOString(), ...args);
+
+/* ------------------------------ Conexión con el portal ------------------------------ */
+
+const isNetworkError = (err) => err?.name === 'TimeoutError' || err?.name === 'AbortError' || err?.name === 'TypeError' || Boolean(err?.cause?.code);
+
+/**
+ * Dirección del portal con respaldo: la actual, la de MAIN_URL, las que informó el portal y 127.0.0.1;
+ * si ninguna responde, lo busca en la red local. Solo acepta un portal con el mismo identificador.
+ */
+export class PortalLink {
+  constructor({ mainUrl, stateFile = '', discoveryPort = 25460, discoveryTargets = null } = {}) {
+    this.primary = String(mainUrl || '').replace(/\/+$/, '');
+    this.current = this.primary;
+    this.known = [];
+    this.id = null;
+    this.stateFile = stateFile;
+    this.discoveryPort = discoveryPort;
+    this.discoveryTargets = discoveryTargets;
+    this.lastSearch = 0;
+    this.searching = null;
+    this.load();
+  }
+
+  load() {
+    if (!this.stateFile) return;
+    try {
+      const st = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
+      if (st.current) this.current = st.current;
+      this.known = Array.isArray(st.known) ? st.known : [];
+      this.id = st.id || null;
+    } catch { /* primera vez */ }
+  }
+
+  save() {
+    if (!this.stateFile) return;
+    try {
+      fs.writeFileSync(this.stateFile, JSON.stringify({ current: this.current, known: this.known, id: this.id }, null, 2));
+    } catch (err) {
+      log('No se pudo guardar el estado del nodo:', err.message);
+    }
+  }
+
+  /** Datos que el portal devuelve en cada latido: { id, urls }. */
+  update(portal) {
+    if (!portal?.id) return;
+    const urls = (portal.urls || []).map((u) => String(u).replace(/\/+$/, '')).filter((u) => /^https?:\/\//.test(u)).slice(0, 30);
+    const changed = portal.id !== this.id || JSON.stringify(urls) !== JSON.stringify(this.known);
+    this.id = portal.id;
+    this.known = urls;
+    if (changed) this.save();
+  }
+
+  candidates() {
+    const out = [];
+    const add = (u) => { if (u && !out.includes(u)) out.push(u); };
+    add(this.current);
+    add(this.primary);
+    for (const u of this.known) add(u);
+    const port = (/:(\d+)$/.exec(this.primary) || [])[1];
+    if (port) add(`http://127.0.0.1:${port}`); // portal en la misma máquina
+    return out;
+  }
+
+  async ping(base) {
+    try {
+      const res = await fetch(`${base}/api/client/ping`, { signal: AbortSignal.timeout(2500) });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data.portal && data.type !== 'iptv-portal') return null;
+      if (this.id && data.id !== this.id) return null; // otro portal: no es el nuestro
+      return data;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Busca el portal por difusión UDP en la red local. */
+  discover(waitMs = 2500) {
+    return new Promise((resolve) => {
+      const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+      const found = [];
+      const finish = () => {
+        try { socket.close(); } catch { /* cerrado */ }
+        resolve(found);
+      };
+      socket.on('error', finish);
+      socket.on('message', (msg) => {
+        try {
+          const info = JSON.parse(msg.toString('utf8'));
+          if (info.type === 'iptv-portal' && info.url && (!this.id || info.id === this.id)) found.push(info);
+        } catch { /* respuesta ajena */ }
+      });
+      socket.bind(0, () => {
+        try { socket.setBroadcast(true); } catch { /* sin difusión */ }
+        const targets = this.discoveryTargets || ['255.255.255.255', ...broadcastAddresses()];
+        const payload = Buffer.from('IPTV-DISCOVER v1');
+        for (const t of targets) socket.send(payload, this.discoveryPort, t, () => {});
+        setTimeout(finish, waitMs);
+      });
+    });
+  }
+
+  /** Encuentra una dirección que responda (máximo una búsqueda cada 20 s). Devuelve true si cambió. */
+  async relocate() {
+    if (this.searching) return this.searching;
+    if (Date.now() - this.lastSearch < 20_000) return false;
+    this.lastSearch = Date.now();
+    this.searching = (async () => {
+      for (const base of this.candidates()) {
+        if (base === this.current) continue;
+        if (await this.ping(base)) return this.use(base, 'dirección conocida');
+      }
+      if (this.id) {
+        for (const info of await this.discover()) {
+          const urls = [info.url, ...(info.public_url ? [info.public_url] : [])];
+          for (const base of urls) {
+            if (await this.ping(base)) return this.use(base, 'red local');
+          }
+        }
+      }
+      return false;
+    })();
+    try {
+      return await this.searching;
+    } finally {
+      this.searching = null;
+    }
+  }
+
+  use(base, how) {
+    log(`Portal encontrado en ${base} (${how}); antes ${this.current}`);
+    this.current = base;
+    this.save();
+    return true;
+  }
+
+  /** fetch al portal; si falla la red, busca otra dirección y reintenta una vez. */
+  async request(pathname, init = {}) {
+    try {
+      return await fetch(`${this.current}${pathname}`, { ...init, signal: init.timeout ? AbortSignal.timeout(init.timeout) : undefined });
+    } catch (err) {
+      if (!isNetworkError(err) || !(await this.relocate())) throw err;
+      return fetch(`${this.current}${pathname}`, { ...init, signal: init.timeout ? AbortSignal.timeout(init.timeout) : undefined });
+    }
+  }
+}
+
+function broadcastAddresses() {
+  const out = [];
+  for (const list of Object.values(os.networkInterfaces())) {
+    for (const a of list || []) {
+      if (a.internal || (a.family !== 'IPv4' && a.family !== 4) || !a.netmask) continue;
+      const ip = a.address.split('.').map(Number);
+      const mask = a.netmask.split('.').map(Number);
+      out.push(ip.map((b, i) => (b | (~mask[i] & 255))).join('.'));
+    }
+  }
+  return [...new Set(out)];
+}
 
 /* --------------------------------- Tokens firmados --------------------------------- */
 
@@ -348,12 +514,18 @@ export class NodeManager {
     this.sessions = new Map(); // conn → sesión
     this.killed = new Set(); // accesos expulsados desde el portal
     this.onSessionClosed = () => {}; // se reemplaza en startNode para avisar al portal enseguida
+    this.link = new PortalLink({
+      mainUrl: this.options.mainUrl,
+      stateFile: this.options.stateFile,
+      discoveryPort: this.options.discoveryPort,
+      discoveryTargets: this.options.discoveryTargets,
+    });
   }
 
   async fetchStreamConfig(id) {
-    const res = await fetch(`${this.options.mainUrl}/api/node/streams/${id}`, {
+    const res = await this.link.request(`/api/node/streams/${id}`, {
       headers: { Authorization: `Bearer ${this.options.token}` },
-      signal: AbortSignal.timeout(10_000),
+      timeout: 10_000,
     });
     if (res.status === 404) return null;
     if (!res.ok) throw Object.assign(new Error(`Portal respondió HTTP ${res.status}`), { status: 502 });
@@ -674,14 +846,15 @@ export async function startNode(options = {}) {
       // Las interfaces cambian poco: se envían al arrancar y luego cada minuto.
       const listenPort = server.address()?.port;
       const network = Date.now() - lastNetworkAt > 60_000 ? collectNetwork(listenPort) : null;
-      const res = await fetch(`${opts.mainUrl}/api/node/heartbeat`, {
+      const res = await manager.link.request('/api/node/heartbeat', {
         method: 'POST',
         headers: { Authorization: `Bearer ${opts.token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(manager.heartbeatBody(collectMetrics(), hardware, network)),
-        signal: AbortSignal.timeout(15_000),
+        timeout: 15_000,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      manager.link.update(data.portal);
       if (network) lastNetworkAt = Date.now();
       if (failures) log('Conexión con el portal restablecida');
       failures = 0;
@@ -721,8 +894,9 @@ if (isMain) {
     console.error('Faltan MAIN_URL y NODE_TOKEN (configúralos en /etc/iptv-node.env)');
     process.exit(1);
   }
-  const node = await startNode();
-  log(`Nodo IPTV ${VERSION} escuchando en ${config.host}:${node.port} · portal ${config.mainUrl}`);
+  const stateFile = config.stateFile || path.join(path.dirname(fileURLToPath(import.meta.url)), 'portal.json');
+  const node = await startNode({ stateFile });
+  log(`Nodo IPTV ${VERSION} escuchando en ${config.host}:${node.port} · portal ${node.manager.link.current}`);
   for (const sig of ['SIGINT', 'SIGTERM']) {
     process.on(sig, async () => {
       await node.stop();

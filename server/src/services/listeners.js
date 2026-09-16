@@ -9,6 +9,16 @@ const servers = new Map(); // puerto -> { server, role, status: 'listening'|'wai
 let app = null;
 let retryTimer = null;
 let desiredClients = [];
+let panelPort = config.port;
+
+/** Rol de un puerto local: 'panel', 'clients' o null (gestor sin iniciar, p. ej. en pruebas). */
+export function portRole(port) {
+  if (!app || !port) return null;
+  if (port === panelPort) return 'panel';
+  return servers.get(port)?.role === 'clients' ? 'clients' : null;
+}
+
+export const currentPanelPort = () => panelPort;
 
 function makeServer() {
   const server = http.createServer(app);
@@ -57,7 +67,7 @@ function close(port) {
 export async function configuredClientPorts() {
   const saved = (await getSettings()).client_ports;
   const list = Array.isArray(saved) && saved.length ? saved : config.extraPorts;
-  return [...new Set(list.map(Number).filter((p) => p > 0 && p !== config.port))];
+  return [...new Set(list.map(Number).filter((p) => p > 0 && p !== panelPort))];
 }
 
 /** Puertos de clientes abiertos ahora mismo (o los configurados si el gestor no se inició, p. ej. en pruebas). */
@@ -74,7 +84,7 @@ export function listenerStatus() {
 
 /** Abre los puertos de clientes pedidos y cierra los que ya no están. Devuelve el resultado de cada uno. */
 export async function applyClientPorts(ports) {
-  desiredClients = [...new Set(ports.map(Number))].filter((p) => p !== config.port);
+  desiredClients = [...new Set(ports.map(Number))].filter((p) => p !== panelPort);
   const results = [];
   for (const [port, e] of [...servers.entries()]) {
     if (e.role === 'clients' && !desiredClients.includes(port)) {
@@ -102,10 +112,11 @@ export async function probePort(port) {
 }
 
 /** Arranque: puerto principal (si falla, el proceso termina) y puertos de clientes. */
-export async function startListeners(expressApp) {
+export async function startListeners(expressApp, { panelPort: port = config.port } = {}) {
   app = expressApp;
-  const main = await listen(config.port, 'panel');
-  if (!main.ok) throw new Error(`No se pudo abrir el puerto principal ${config.port}: ${main.error}`);
+  panelPort = port;
+  const main = await listen(panelPort, 'panel');
+  if (!main.ok) throw new Error(`No se pudo abrir el puerto principal ${panelPort}: ${main.error}`);
   const results = await applyClientPorts(await configuredClientPorts());
   for (const r of results) {
     if (!r.ok) console.error(`El puerto ${r.port} no se pudo abrir (${r.error}). Se reintentará cada 30 s.`);
@@ -129,7 +140,7 @@ export async function movePublicUrl(ports) {
   const current = (await getSettings()).public_url || '';
   const m = /^(https?:\/\/[^/]+?):(\d+)(\/.*)?$/.exec(current);
   const port = m ? Number(m[2]) : null;
-  if (!m || ports.includes(port) || port === config.port) return null;
+  if (!m || ports.includes(port) || port === panelPort) return null;
   const next = `${m[1]}:${ports[0]}${m[3] || ''}`;
   await saveSettings({ public_url: next });
   return next;

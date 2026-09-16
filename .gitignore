@@ -34,3 +34,6 @@ Thumbs.db
 
 # Versión instalada (la escribe el instalador en cada servidor)
 server/build-info.json
+
+# Estado del nodo de streaming (direcciones conocidas del portal)
+node/portal.json

@@ -13,6 +13,7 @@ import { insertId } from '../db/index.js';
 import { renderPlaceholders } from '../services/reminders.js';
 import { checkUpdate, countDownload, releaseFile } from '../services/appReleases.js';
 import { activeClientPorts } from '../services/listeners.js';
+import { portalId, portalIdentity } from '../services/portalAddresses.js';
 
 const router = Router();
 
@@ -43,11 +44,13 @@ router.get('/ping', async (req, res) => {
   res.json({
     portal: true,
     type: 'iptv-portal',
+    id: await portalId(),
     name: settings.server_name,
     version: config.version,
     url: `${req.protocol}://${req.get('host')}`,
     public_url: settings.public_url || null,
-    ports: [...new Set([config.port, ...activeClientPorts()])],
+    ports: [...new Set([...activeClientPorts(), config.port])],
+    client_ports: activeClientPorts(),
   });
 });
 
@@ -108,6 +111,8 @@ router.get('/info', async (req, res) => {
   res.json({
     portal: true,
     server_name: settings.server_name,
+    // Identidad y direcciones del portal: la app las guarda para reconectarse si cambia la IP.
+    server: await portalIdentity(req, { forApp: true }),
     user: {
       username: user.username,
       exp_date: user.exp_date ? Number(user.exp_date) : null,

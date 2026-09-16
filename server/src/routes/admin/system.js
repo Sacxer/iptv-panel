@@ -251,6 +251,14 @@ systemRouter.put('/settings', adminOnly, async (req, res) => {
   } else if (body.public_url_auto !== undefined) {
     patch.public_url_auto = bool(body.public_url_auto);
   }
+  if (body.alternate_urls !== undefined) {
+    const list = (Array.isArray(body.alternate_urls) ? body.alternate_urls : String(body.alternate_urls || '').split(/[\s,]+/))
+      .map((u) => String(u || '').trim().replace(/\/+$/, '')).filter(Boolean);
+    const bad = list.find((u) => !/^https?:\/\/[^/\s]+$/i.test(u));
+    if (bad) throw new HttpError(400, `Dirección alternativa no válida: ${bad} (usa http://ip-o-dominio:puerto)`);
+    if (list.length > 10) throw new HttpError(400, 'Máximo 10 direcciones alternativas');
+    patch.alternate_urls = [...new Set(list)];
+  }
   if (body.stream_mode !== undefined) patch.stream_mode = oneOf(body.stream_mode, ['redirect', 'proxy', 'xtream_upstream'], 'stream_mode');
   if (body.xtream_upstream_url !== undefined) patch.xtream_upstream_url = String(body.xtream_upstream_url).trim().replace(/\/+$/, '');
   if (body.epg_url !== undefined) patch.epg_url = String(body.epg_url).trim();

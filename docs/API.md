@@ -710,6 +710,18 @@ El puerto principal también atiende a los clientes.
   (`/usr/local/sbin/iptv-firewall`, vía sudo); si no está, `manual` trae el comando.
 - En el servidor: `sudo bash /opt/iptv/install-ubuntu.sh --set-clients-port 25461` hace lo mismo desde la consola.
 
+**Separación panel / clientes** (`separate_ports`, activa en instalaciones nuevas; en un portal que ya tenía clientes empieza
+apagada para no romper enlaces): con al menos un puerto de clientes abierto,
+- el puerto del panel **no** atiende a clientes (`/player_api.php`, `/get.php`, `/xmltv.php`, `/live|movie|series/…`,
+  `/{usuario}/{clave}/{id}`, `/api/client/…` → 404 con "Los clientes usan el puerto N");
+- los puertos de clientes **no** sirven el panel (`/admin`, `/api/admin`, `/` → 404 "Portal IPTV");
+- `/api/node`, `/health` y las páginas legales responden en todos;
+- la app y el descubrimiento reciben el puerto de clientes (`port`/`url`; `panel_port` aparte) y `server.urls` no incluye el del panel.
+- `PUT /system/ports` `{"separate_ports":true|false}` (solo eso) la activa o desactiva; al activarla, si la URL para clientes usa
+  el puerto del panel pasa al primer puerto de clientes (`public_url_changed`). Requiere un puerto de clientes abierto.
+- El puerto de clientes nunca puede ser el del panel (400; también en `--set-clients-port`).
+- En `GET /system/ports`: `separate_ports`, `separation_active`.
+
 ### Arranque automático y cambio de IP (cortes de luz)
 - El portal (`iptv-portal`) y los nodos (`iptv-node`) son servicios de systemd **activados**: arrancan solos al encender el
   servidor, esperan a que la red esté lista (`network-online.target`), se reinician si fallan (`Restart=always`) y nunca dejan
@@ -720,6 +732,20 @@ El puerto principal también atiende a los clientes.
 - Ajustes: `public_url_auto` (bool) y `public_url_interface` (solo lectura). Al guardar `public_url` se activa solo si es una IP
   de una interfaz; se puede forzar con `public_url_auto`. Servidores: mismos campos en el objeto Servidor; `use-ip` lo activa
   con la interfaz elegida y `PUT /servers/{id}` acepta `public_url_auto`.
+
+### Identidad del portal y reconexión (app y nodos)
+- Cada portal tiene un identificador fijo (`install_id`, UUID; viaja en los backups).
+  - `GET /api/client/ping` y la respuesta UDP de descubrimiento incluyen `"id"`.
+  - `GET /api/client/info` incluye `"server":{"id","name","urls":[…]}` y el latido del nodo (`POST /api/node/heartbeat`)
+    incluye `"portal":{"id","name","urls":[…]}`.
+  - `urls`: primero la dirección que usó quien pregunta, luego la URL para clientes, las **direcciones alternativas** de Ajustes
+    (`alternate_urls`: dominio, IP de otra red, VPN…; máx. 10) y la IP de cada interfaz (sin locales ni virtuales) con los
+    puertos abiertos.
+- **Nodo** (`iptv-node` 1.1.0): guarda `{current, known, id}` en `portal.json` (junto al programa; `STATE_FILE` para cambiarlo).
+  Si pierde contacto (o al arrancar sin respuesta) prueba, en orden, la actual, `MAIN_URL`, las conocidas y `http://127.0.0.1:<puerto>`;
+  si ninguna responde, envía `IPTV-DISCOVER` por difusión UDP (25460) y usa la respuesta cuyo `id` coincide. Nunca se conecta a un
+  portal con otro `id`. Busca como máximo cada 20 s.
+- **App** (1.0.2): mismo procedimiento con las direcciones de `server.urls`; al encontrar el portal actualiza el perfil sola.
 
 ### Registro de actividad (solo admin)
 Objeto **Log**: `{"id","admin_id","admin_username","action","entity","entity_id","details","created_at"}`

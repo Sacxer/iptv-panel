@@ -5,7 +5,8 @@ import dgram from 'node:dgram';
 import os from 'node:os';
 import { config } from '../config.js';
 import { getSettings } from '../lib/settings.js';
-import { activeClientPorts } from './listeners.js';
+import { activeClientPorts, currentPanelPort } from './listeners.js';
+import { portalId } from './portalAddresses.js';
 import { classifyIp } from './network.js';
 
 export const DISCOVERY_PORT = Number(process.env.DISCOVERY_PORT || 25460);
@@ -37,14 +38,19 @@ export function localAddressFor(remote, interfaces = os.networkInterfaces()) {
 /** Datos que se anuncian a la app. */
 export async function discoveryInfo(localAddress) {
   const settings = await getSettings();
-  const ports = [...new Set([config.port, ...activeClientPorts()])];
+  const clientPorts = activeClientPorts();
+  // La app entra por el puerto de clientes (el del panel queda solo para administrar).
+  const port = settings.separate_ports && clientPorts.length ? clientPorts[0] : currentPanelPort();
+  const ports = [...new Set([...clientPorts, currentPanelPort()])];
   return {
     type: 'iptv-portal',
+    id: await portalId(),
     name: settings.server_name,
     version: config.version,
-    url: `http://${localAddress}:${config.port}`,
+    url: `http://${localAddress}:${port}`,
     host: localAddress,
-    port: config.port,
+    port,
+    panel_port: currentPanelPort(),
     ports,
     public_url: settings.public_url || null,
   };

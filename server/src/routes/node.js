@@ -1,4 +1,5 @@
 // API que usan los nodos de streaming (autenticados con el token de su servidor).
+import { portalIdentity } from '../services/portalAddresses.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Router } from 'express';
@@ -23,7 +24,9 @@ async function authServer(req) {
 
 router.post('/heartbeat', async (req, res) => {
   const server = await authServer(req);
-  res.json(await handleHeartbeat(server, req.body || {}, clientIp(req)));
+  const result = await handleHeartbeat(server, req.body || {}, clientIp(req));
+  // El nodo guarda las direcciones del portal para encontrarlo si cambia de IP.
+  res.json({ ...result, portal: await portalIdentity(req) });
 });
 
 router.get('/streams/:id', async (req, res) => {

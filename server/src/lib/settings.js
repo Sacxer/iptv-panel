@@ -8,6 +8,10 @@ export const DEFAULT_SETTINGS = {
   // La URL sigue a su interfaz si la IP cambia (DHCP tras un corte de luz). Solo si es una IP de la máquina.
   public_url_auto: false,
   public_url_interface: '',
+  // Otras direcciones del portal (dominio, IP de otra red…) que la app y los nodos prueban si la principal falla.
+  alternate_urls: [],
+  // Identificador del portal (lo usan la app y los nodos para reconocerlo en la red local).
+  install_id: '',
   stream_mode: 'redirect', // redirect | proxy | xtream_upstream
   xtream_upstream_url: '',
   epg_url: '',
@@ -15,6 +19,8 @@ export const DEFAULT_SETTINGS = {
   allow_all_without_package: true,
   // Puertos para clientes (Xtream Codes / M3U). Vacío = EXTRA_PORTS del .env.
   client_ports: [],
+  // Panel y clientes en puertos distintos (el panel no se sirve por el de clientes y viceversa).
+  separate_ports: true,
   connection_timeout_seconds: 60,
   xtream_db: { host: '', port: 3306, user: '', password: '', database: 'xtream_iptvpro', broadcast_port: null },
   // Dispositivos

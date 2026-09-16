@@ -9,6 +9,7 @@ import legalRoutes from './routes/legal.js';
 import nodeRoutes from './routes/node.js';
 import xtreamRoutes from './routes/xtream.js';
 import { handleWebhook } from './services/billingSync.js';
+import { portGuard } from './lib/portGuard.js';
 
 export function createApp() {
   const app = express();
@@ -21,6 +22,7 @@ export function createApp() {
   app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 
   app.get('/health', (_req, res) => res.json({ ok: true, version: config.version }));
+  app.use(portGuard); // panel y clientes separados por puerto
   app.use(legalRoutes); // /privacidad y /eliminar-datos (Google Play)
 
   app.use('/api/admin', adminRoutes);

@@ -141,6 +141,10 @@ fi
 if [[ -n "$SET_CLIENTS_PORT" ]]; then
   if (( FRESH )); then echo "El portal no está instalado en $APP_DIR"; exit 1; fi
   OLD_PORT="$(env_get EXTRA_PORTS | cut -d, -f1)"
+  if [[ "$SET_CLIENTS_PORT" == "$(env_get PORT)" ]]; then
+    echo "El $SET_CLIENTS_PORT es el puerto del panel: usa uno distinto para los clientes."
+    exit 1
+  fi
   if port_busy "$SET_CLIENTS_PORT" && ! port_is_ours "$SET_CLIENTS_PORT"; then
     echo "El puerto $SET_CLIENTS_PORT lo está usando: $(port_owner "$SET_CLIENTS_PORT")."
     [[ -n "$XTREAM_KIND" ]] && echo "Apaga primero $XTREAM_KIND (y su inicio automático) cuando hayas terminado la migración."
