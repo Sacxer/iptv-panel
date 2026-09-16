@@ -1,6 +1,8 @@
 // Puertos HTTP del portal: el principal (panel y API) y los de clientes (Xtream Codes / M3U).
 // Los de clientes se abren y cierran en caliente desde el panel, sin reiniciar. Si uno está ocupado
 // (p. ej. por XtreamUI), se reintenta solo hasta que quede libre.
+import { execFile } from 'node:child_process';
+import fs from 'node:fs';
 import http from 'node:http';
 import { config } from '../config.js';
 import { getSettings, saveSettings } from '../lib/settings.js';
@@ -38,7 +40,10 @@ function listen(port, role) {
     const server = makeServer();
     const onError = (err) => {
       server.removeAllListeners('listening');
-      servers.set(port, { server: null, role, status: err.code === 'EADDRINUSE' ? 'waiting' : 'error', error: errorText(err), since: Date.now() });
+      const status = err.code === 'EADDRINUSE' ? 'waiting' : 'error';
+      const prev = servers.get(port);
+      const since = prev && prev.status === status ? prev.since : Date.now();
+      servers.set(port, { server: null, role, status, error: errorText(err), since });
       resolve({ port, ok: false, code: err.code, error: errorText(err) });
     };
     server.once('error', onError);
@@ -125,7 +130,13 @@ export async function startListeners(expressApp, { panelPort: port = config.port
   retryTimer = setInterval(async () => {
     for (const port of desiredClients) {
       const e = servers.get(port);
-      if (e && e.status === 'waiting') await listen(port, 'clients');
+      if (e && e.status === 'waiting') {
+        const r = await listen(port, 'clients');
+        if (r.ok) {
+          const fw = await openFirewall(port);
+          if (!fw.ok && fw.manual) console.log(`Puerto ${port} abierto; en el cortafuegos: ${fw.manual}`);
+        }
+      }
     }
   }, 30_000);
   retryTimer.unref();
@@ -142,9 +153,26 @@ export async function movePublicUrl(ports) {
   const m = /^(https?:\/\/[^/]+?):(\d+)(\/.*)?$/.exec(current);
   const port = m ? Number(m[2]) : null;
   if (!m || ports.includes(port) || port === panelPort) return null;
-  const next = `${m[1]}:${ports[0]}${m[3] || ''}`;
+  const open = ports.find((p) => servers.get(p)?.status === 'listening') ?? ports[0];
+  const next = `${m[1]}:${open}${m[3] || ''}`;
   await saveSettings({ public_url: next });
   return next;
+}
+
+// Ayudante que deja el instalador: abre un puerto TCP en ufw (sudo sin contraseña solo para este script).
+export const FIREWALL_HELPER = process.env.FIREWALL_HELPER || '/usr/local/sbin/iptv-firewall';
+
+export function openFirewall(port) {
+  return new Promise((resolve) => {
+    if (!fs.existsSync(FIREWALL_HELPER)) {
+      resolve({ port, ok: false, manual: `sudo ufw allow ${port}/tcp` });
+      return;
+    }
+    execFile('sudo', ['-n', FIREWALL_HELPER, 'allow', String(port)], { timeout: 15_000 }, (err, stdout) => {
+      if (err) resolve({ port, ok: false, error: err.message.split('\n')[0], manual: `sudo ufw allow ${port}/tcp` });
+      else resolve({ port, ok: true, detail: String(stdout).trim() });
+    });
+  });
 }
 
 /** Una URL para clientes nunca usa el puerto del panel si hay un puerto de clientes abierto. */

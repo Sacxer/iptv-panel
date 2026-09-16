@@ -1,6 +1,5 @@
 // Puertos del portal: ver cuáles están abiertos y cambiar los de clientes sin reiniciar
 // (p. ej. pasar al 25461 o al 80 después de apagar XtreamUI / XUI.one).
-import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import { Router } from 'express';
 import { adminOnly } from '../../lib/auth.js';
@@ -8,12 +7,11 @@ import { logAction } from '../../lib/log.js';
 import { getSettings, saveSettings } from '../../lib/settings.js';
 import { HttpError, bool, int } from '../../lib/util.js';
 import {
-  applyClientPorts, configuredClientPorts, currentPanelPort, ensureApp, listenerStatus, movePublicUrl, normalizeStoredClientUrl, probePort,
+  FIREWALL_HELPER, applyClientPorts, configuredClientPorts, currentPanelPort, ensureApp, listenerStatus, movePublicUrl, normalizeStoredClientUrl,
+  openFirewall, probePort,
 } from '../../services/listeners.js';
 import { DISCOVERY_PORT } from '../../services/discovery.js';
 
-// Ayudante que deja el instalador: abre un puerto TCP en ufw (sudo sin contraseña solo para este script).
-const FIREWALL_HELPER = process.env.FIREWALL_HELPER || '/usr/local/sbin/iptv-firewall';
 const RESERVED = new Set([22, 25, 53, 3306, 5432]);
 
 const router = Router();
@@ -47,19 +45,6 @@ async function overview() {
       original_port: original,
     },
   };
-}
-
-function openFirewall(port) {
-  return new Promise((resolve) => {
-    if (!fs.existsSync(FIREWALL_HELPER)) {
-      resolve({ port, ok: false, manual: `sudo ufw allow ${port}/tcp` });
-      return;
-    }
-    execFile('sudo', ['-n', FIREWALL_HELPER, 'allow', String(port)], { timeout: 15_000 }, (err, stdout) => {
-      if (err) resolve({ port, ok: false, error: err.message.split('\n')[0], manual: `sudo ufw allow ${port}/tcp` });
-      else resolve({ port, ok: true, detail: String(stdout).trim() });
-    });
-  });
 }
 
 function parsePorts(list) {

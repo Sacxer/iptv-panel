@@ -25,12 +25,21 @@ describe('la URL sigue a la IP de su interfaz', () => {
     assert.equal(followUrl('https://tv.midominio.com', ports, 'eth0', rankAddresses), null);
     assert.equal(interfaceOfUrl('http://10.0.0.9:80', ports), 'eth1');
     assert.equal(interfaceOfUrl('http://203.0.113.5:80', ports), null);
+    assert.equal(followUrl('http://203.0.113.5:25461', ports, null, rankAddresses), null, 'IP pública (NAT): nunca se cambia');
+    assert.equal(followUrl('http://172.27.14.9:25461', ports, null, rankAddresses).url, 'http://192.168.1.80:25461', 'IP de red local vieja: se sigue');
+    const lo = [{ name: 'lo', type: 'loopback', status: 'up', addresses: [{ address: '127.0.0.1', family: 'IPv4', scope: 'loopback' }] }, ...ports];
+    assert.equal(interfaceOfUrl('http://127.0.0.1:8090', lo), null, 'loopback no se sigue');
+    assert.equal(followUrl('http://127.0.0.1:8090', lo, null, rankAddresses), null);
   });
 
   test('portal: una IP pública o un dominio no se siguen; una IP de la máquina sí', async () => {
     const { followPublicUrl } = await import('../src/services/ipFollow.js');
     const pub = (await ctx.api('PUT', '/api/admin/settings', { public_url: 'http://203.0.113.5:25461' })).data;
     assert.equal(pub.public_url_auto, false, 'IP que no está en ninguna interfaz (NAT): fija');
+    const forced = await ctx.api('PUT', '/api/admin/settings', { public_url_auto: true });
+    assert.equal(forced.status, 400, 'no se puede forzar con una IP pública');
+    const forcedWithUrl = (await ctx.api('PUT', '/api/admin/settings', { public_url: 'http://203.0.113.5:25461', public_url_auto: true })).data;
+    assert.equal(forcedWithUrl.public_url_auto, false);
     const dom = (await ctx.api('PUT', '/api/admin/settings', { public_url: 'https://tv.midominio.com' })).data;
     assert.equal(dom.public_url_auto, false);
 

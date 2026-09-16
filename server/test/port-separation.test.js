@@ -72,6 +72,11 @@ describe('separación de puertos', () => {
     assert.equal(login.status, 200, 'el panel funciona en su puerto');
     assert.equal((await get(panel, '/health')).status, 200);
     assert.equal((await get(panel, '/privacidad')).status, 200);
+    // Recargar páginas del panel con un número en la ruta no es una URL de stream.
+    for (const path of ['/admin/servidores/1', '/admin/clientes/12', '/admin/x/123']) {
+      const r = await get(panel, path);
+      assert.ok(!r.text.includes('puerto del panel'), path);
+    }
   });
 
   test('la app y la búsqueda en la red reciben el puerto de clientes', async () => {

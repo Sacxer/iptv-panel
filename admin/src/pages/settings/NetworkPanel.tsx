@@ -21,10 +21,12 @@ import {
 import { api, errorMessage } from '../../api';
 import { useAsync } from '../../hooks/useAsync';
 import { DataTable } from '../../components/DataTable';
+import { PortsCard, urlPort } from './PortsCard';
+import { AlternateUrlsCard } from './AlternateUrlsCard';
 import { Modal } from '../../components/Modal';
 import { useToast } from '../../components/Toast';
-import { Alert, Badge, CopyButton, ErrorState, FormField, PageLoader, Spinner } from '../../components/ui';
-import type { ListeningPort, NetworkAddress, NetworkPort, PublicIpInfo } from '../../types';
+import { Alert, Badge, CopyButton, ErrorState, FormField, Spinner, Switch } from '../../components/ui';
+import type { ListeningPort, NetworkAddress, NetworkPort, PortsInfo, PublicIpInfo } from '../../types';
 import { formatNumber, isValidUrl } from '../../utils/format';
 import type { Tone } from '../../utils/labels';
 
@@ -54,6 +56,80 @@ export function isLocalUrl(u: string | null | undefined): boolean {
   return /\/\/(localhost|127\.|\[::1\])/i.test(u ?? '');
 }
 
+function urlHost(url: string): string | null {
+  const m = /^https?:\/\/(\[[^\]]+\]|[^/:\s]+)/i.exec(url.trim());
+  return m ? m[1].replace(/^\[|\]$/g, '') : null;
+}
+
+const isIpHost = (host: string) => /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(':');
+
+/**
+ * ¿La URL es una IP de una de estas interfaces (y por tanto puede seguirla si cambia)?
+ * null = no se sabe (aún no hay lista de interfaces).
+ */
+export function urlFollowable(url: string, ports: NetworkPort[] | null | undefined): boolean | null {
+  const host = urlHost(url);
+  if (!host || !isIpHost(host)) return false;
+  if (!ports) return null;
+  return ports.some((p) => p.addresses.some((a) => a.address.toLowerCase() === host.toLowerCase()));
+}
+
+/** Interruptor «Seguir la IP automáticamente» de la URL para clientes (portal o nodo). */
+export function UrlFollowSwitch({
+  url,
+  auto,
+  iface,
+  ports,
+  busy = false,
+  onChange,
+}: {
+  url: string;
+  auto: boolean;
+  iface?: string | null;
+  ports: NetworkPort[] | null | undefined;
+  busy?: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  if (!url.trim()) return null;
+  const followable = urlFollowable(url, ports);
+  const host = urlHost(url) ?? '';
+  // Encenderlo con una IP que no está en las interfaces haría que se cambie por una IP local.
+  const blocked = !auto && followable === false;
+  let description: ReactNode = null;
+  if (followable === false) {
+    description =
+      auto && isIpHost(host) ? (
+        <span className="text-amber">Esta IP no está en las interfaces del servidor: apágalo para que no se reemplace por una IP local.</span>
+      ) : (
+        'Con un dominio o una IP pública la URL no cambia sola.'
+      );
+  } else if (auto) {
+    description = 'Si el router le da otra IP a esa interfaz (DHCP, corte de luz), la URL se actualiza sola.';
+  }
+  return (
+    <div className="url-follow">
+      <Switch
+        checked={auto}
+        disabled={busy || blocked}
+        onChange={onChange}
+        label={
+          <>
+            Seguir la IP automáticamente si cambia (DHCP, cortes de luz)
+            {auto && iface ? (
+              <span className="muted">
+                {' '}
+                — interfaz <span className="mono">{iface}</span>
+              </span>
+            ) : null}
+          </>
+        }
+        description={description}
+      />
+      {busy && <Spinner size={13} />}
+    </div>
+  );
+}
+
 function formatSpeed(mbps: number | null | undefined): string | null {
   if (!mbps) return null;
   if (mbps >= 1000) return `${(mbps / 1000).toLocaleString('es-CO', { maximumFractionDigits: 1 })} Gbps`;
@@ -76,9 +152,12 @@ function publicIpAddress(p: PublicIpInfo | string | null | undefined): PublicIpI
   return p;
 }
 
-export function NetworkPanel({ onPublicUrlSaved }: { onPublicUrlSaved: (url: string) => void }) {
+/** IP / URL para clientes y puertos del portal (Servidores → Servidor principal). */
+export function NetworkPanel() {
   const toast = useToast();
   const net = useAsync(() => api.system.network(), []);
+  const settings = useAsync(() => api.settings.get(), []);
+  const [savingAuto, setSavingAuto] = useState(false);
   const [publicIp, setPublicIp] = useState<PublicIpInfo | null>(null);
   const [detecting, setDetecting] = useState(false);
   const [savingUrl, setSavingUrl] = useState<string | null>(null);
@@ -86,6 +165,8 @@ export function NetworkPanel({ onPublicUrlSaved }: { onPublicUrlSaved: (url: str
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [draftError, setDraftError] = useState<string | null>(null);
+  const [urlVersion, setUrlVersion] = useState(0);
+  const [portsInfo, setPortsInfo] = useState<PortsInfo | null>(null);
 
   const d = net.data;
 
@@ -97,7 +178,8 @@ export function NetworkPanel({ onPublicUrlSaved }: { onPublicUrlSaved: (url: str
       // Se muestra ya el valor guardado; el nuevo escaneo (tarda unos segundos) actualiza sugerencias y «En uso».
       net.setData((prev) => (prev ? { ...prev, current_public_url: clean, effective_base_url: clean || prev.effective_base_url } : prev));
       toast.success(clean ? `URL para clientes: ${clean}` : 'URL para clientes vacía: se usará la detectada automáticamente');
-      onPublicUrlSaved(clean);
+      setUrlVersion((v) => v + 1);
+      void settings.reload(true);
       setEditing(false);
       setChooser(null);
       await net.reload(true);
@@ -105,6 +187,19 @@ export function NetworkPanel({ onPublicUrlSaved }: { onPublicUrlSaved: (url: str
       toast.error(errorMessage(e));
     } finally {
       setSavingUrl(null);
+    }
+  };
+
+  const saveAuto = async (value: boolean) => {
+    setSavingAuto(true);
+    try {
+      const next = await api.settings.update({ public_url_auto: value });
+      settings.setData(next);
+      toast.success(value ? 'La URL seguirá a la IP de su interfaz' : 'La URL queda fija');
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setSavingAuto(false);
     }
   };
 
@@ -121,12 +216,52 @@ export function NetworkPanel({ onPublicUrlSaved }: { onPublicUrlSaved: (url: str
     }
   };
 
-  if (!d) return net.error ? <ErrorState message={net.error} onRetry={() => void net.reload()} /> : <PageLoader label="Analizando la red del servidor…" />;
+  // Los puertos cargan al instante; el escaneo de red tarda unos segundos. La clave evita que la tarjeta se monte de nuevo.
+  const portsCard = (
+    <PortsCard
+      key="ports"
+      refreshKey={urlVersion}
+      onInfo={setPortsInfo}
+      onSaved={(res) => {
+        const changed = res.public_url_changed;
+        if (changed) net.setData((prev) => (prev ? { ...prev, current_public_url: changed, effective_base_url: changed } : prev));
+        // Los puertos del portal cambian las sugerencias: se vuelve a escanear.
+        void net.reload(true);
+        if (changed) void settings.reload(true);
+      }}
+    />
+  );
+
+  if (!d) {
+    return (
+      <div className="stack">
+        {net.error ? (
+          <ErrorState key="net" message={net.error} onRetry={() => void net.reload()} />
+        ) : (
+          <section key="net" className="card net-scanning">
+            <Spinner label="Analizando la red del servidor…" />
+          </section>
+        )}
+        {portsCard}
+      </div>
+    );
+  }
 
   const current = d.current_public_url;
   const shownUrl = current || d.effective_base_url;
-  const portalPorts = d.portal_ports ?? [];
-  const suggestions = d.suggestions ?? [];
+  // Con la separación activa los clientes no pueden usar el puerto del panel: no se ofrece.
+  const panelPort = portsInfo?.panel_port ?? null;
+  const separated = Boolean(portsInfo?.separation_active);
+  const forClients = (port: number) => !(separated && port === panelPort);
+  const portalPorts = (d.portal_ports ?? []).filter(forClients);
+  const suggestions = (d.suggestions ?? []).filter((s) => forClients(s.port));
+  const hiddenPanelSuggestions = (d.suggestions ?? []).length - suggestions.length;
+  // Puerto para clientes de las direcciones alternativas: el primero abierto (o el del panel si no hay).
+  const clientPort =
+    portsInfo?.listeners.find((l) => l.role === 'clients' && l.status === 'listening')?.port ??
+    (d.portal_ports ?? []).find((p) => p !== panelPort) ??
+    panelPort;
+  const quickAlternates = (d.suggestions ?? []).filter((s) => s.port === clientPort && s.interface_type !== 'virtual');
   // Las sugerencias con la IP de salida solo llegan con ?external=true: se conservan tras volver a escanear.
   const ipInfo = publicIp ?? publicIpAddress(d.public_ip);
 
@@ -148,7 +283,7 @@ export function NetworkPanel({ onPublicUrlSaved }: { onPublicUrlSaved: (url: str
   return (
     <div className="stack">
       <div className="net-toolbar">
-        <p className="muted text-sm no-margin">Puertos de red del servidor, sus IPs y la dirección que usan los clientes.</p>
+        <p className="muted text-sm no-margin">La dirección que usan los clientes, los puertos del portal y las interfaces de red del servidor.</p>
         <button type="button" className="btn btn-secondary btn-sm" onClick={() => void net.reload(true)} disabled={net.loading}>
           {net.loading ? <Spinner size={13} /> : <RefreshCw size={14} />} Volver a escanear
         </button>
@@ -169,6 +304,22 @@ export function NetworkPanel({ onPublicUrlSaved }: { onPublicUrlSaved: (url: str
             </button>
           )}
         </div>
+        {current && settings.data && (
+          <UrlFollowSwitch
+            url={current}
+            auto={Boolean(settings.data.public_url_auto)}
+            iface={settings.data.public_url_interface}
+            ports={d.network_ports ?? []}
+            busy={savingAuto}
+            onChange={(v) => void saveAuto(v)}
+          />
+        )}
+        {separated && panelPort !== null && urlPort(shownUrl) === panelPort && (
+          <Alert tone="amber" icon={<TriangleAlert size={18} />}>
+            Esta URL usa el puerto del panel ({panelPort}), que no atiende a los clientes mientras el panel y los clientes están separados. Elige una con
+            el puerto para clientes.
+          </Alert>
+        )}
         {isLocalUrl(shownUrl) && (
           <Alert tone="amber" icon={<TriangleAlert size={18} />}>
             Esta dirección solo funciona dentro del propio servidor. Elige abajo una IP de sus puertos de red.
@@ -212,7 +363,20 @@ export function NetworkPanel({ onPublicUrlSaved }: { onPublicUrlSaved: (url: str
         )}
       </section>
 
-      {/* 2) Puertos de red (interfaces) */}
+      {/* 2) Puertos del portal */}
+      {portsCard}
+
+      {/* 3) Direcciones alternativas e identificador */}
+      {settings.data && (
+        <AlternateUrlsCard
+          settings={settings.data}
+          onSaved={(next) => settings.setData(next)}
+          suggestions={quickAlternates}
+          currentUrl={current}
+        />
+      )}
+
+      {/* 4) Puertos de red (interfaces) */}
       <section className="card">
         <h2 className="card-title">
           <EthernetPort size={18} /> Puertos de red
@@ -220,7 +384,7 @@ export function NetworkPanel({ onPublicUrlSaved }: { onPublicUrlSaved: (url: str
         <NetworkPortsList ports={d.network_ports ?? []} current={current} disabled={savingUrl !== null} onUse={(ip, iface) => setChooser({ ip, iface })} />
       </section>
 
-      {/* 3) Sugerencias */}
+      {/* 5) Sugerencias */}
       <section className="card">
         <div className="section-header">
           <h2 className="card-title no-margin">
@@ -247,6 +411,11 @@ export function NetworkPanel({ onPublicUrlSaved }: { onPublicUrlSaved: (url: str
               </span>
             )}
           </div>
+        )}
+        {hiddenPanelSuggestions > 0 && (
+          <p className="muted text-xs no-margin">
+            No se muestran las del puerto del panel ({panelPort}): con el panel y los clientes separados, los clientes no pueden usarlo.
+          </p>
         )}
         {suggestions.length === 0 ? (
           <p className="muted text-sm no-margin">No hay direcciones utilizables: revisa que el servidor tenga una interfaz conectada.</p>
@@ -287,7 +456,7 @@ export function NetworkPanel({ onPublicUrlSaved }: { onPublicUrlSaved: (url: str
         )}
       </section>
 
-      {/* 4) Puertos TCP a la escucha */}
+      {/* 6) Puertos TCP a la escucha */}
       <ListeningCard listening={d.listening ?? []} />
 
       <PortChooser

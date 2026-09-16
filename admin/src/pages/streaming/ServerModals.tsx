@@ -6,6 +6,7 @@ import { Modal } from '../../components/Modal';
 import { useToast } from '../../components/Toast';
 import { Alert, CopyButton, FormField, Spinner, Switch } from '../../components/ui';
 import type { StreamingServer } from '../../types';
+import { UrlFollowSwitch, urlFollowable } from '../settings/NetworkPanel';
 
 export function ServerFormModal({
   open,
@@ -25,6 +26,8 @@ export function ServerFormModal({
   const [weight, setWeight] = useState('1');
   const [enabled, setEnabled] = useState(true);
   const [notes, setNotes] = useState('');
+  const [auto, setAuto] = useState(false);
+  const [autoTouched, setAutoTouched] = useState(false);
   const [errors, setErrors] = useState<{ name?: string; url?: string; max?: string; weight?: string }>({});
   const [busy, setBusy] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
@@ -37,9 +40,20 @@ export function ServerFormModal({
     setWeight(String(server?.weight ?? 1));
     setEnabled(server?.enabled ?? true);
     setNotes(server?.notes ?? '');
+    setAuto(Boolean(server?.public_url_auto));
+    setAutoTouched(false);
     setErrors({});
     setServerError(null);
   }, [open, server]);
+
+  const cleanUrl = publicUrl.trim().replace(/\/+$/, '');
+  const nodePorts = server?.network ? server.network.ports ?? [] : null;
+  // Sin tocar el interruptor, una URL nueva lo enciende solo si es una IP de las interfaces del nodo (igual que el servidor).
+  const shownAuto = autoTouched
+    ? auto
+    : server && cleanUrl !== (server.public_url ?? '')
+      ? !cleanUrl || urlFollowable(cleanUrl, nodePorts) === true
+      : Boolean(server?.public_url_auto);
 
   const submit = async () => {
     const e: typeof errors = {};
@@ -56,6 +70,8 @@ export function ServerFormModal({
       name: name.trim(),
       // Al crear, vacía = se completa con la IP de la interfaz principal del nodo en su primer latido.
       ...(url || server ? { public_url: url } : {}),
+      // Se envía siempre al editar: guardar otro campo no debe cambiar si la URL sigue a su interfaz.
+      ...(server ? { public_url_auto: shownAuto } : {}),
       max_clients: Number(maxClients),
       weight: Number(weight),
       enabled,
@@ -115,6 +131,18 @@ export function ServerFormModal({
       >
         <input className="input mono" value={publicUrl} onChange={(e) => setPublicUrl(e.target.value)} placeholder={server ? 'http://IP-del-servidor:8090' : 'Vacía = se detecta al conectar el nodo'} />
       </FormField>
+      {server && (
+        <UrlFollowSwitch
+          url={cleanUrl}
+          auto={shownAuto}
+          iface={cleanUrl === server.public_url ? server.public_url_interface : null}
+          ports={nodePorts}
+          onChange={(v) => {
+            setAuto(v);
+            setAutoTouched(true);
+          }}
+        />
+      )}
       <div className="grid-2">
         <FormField label="Clientes máximos" error={errors.max} hint="0 = sin límite">
           <input className="input input-narrow" type="number" min={0} value={maxClients} onChange={(e) => setMaxClients(e.target.value)} />

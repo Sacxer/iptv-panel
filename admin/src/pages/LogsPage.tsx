@@ -6,12 +6,14 @@ import { DataTable } from '../components/DataTable';
 import { Badge, PageHeader } from '../components/ui';
 import type { LogEntry } from '../types';
 import { formatDateTime, logDetails, truncate } from '../utils/format';
+import { LOG_ACTION_LABEL } from '../utils/labels';
 
 function actionTone(action: string) {
   const a = action.toLowerCase();
   if (a.includes('delete') || a.includes('elimin') || a.includes('suspend')) return 'red' as const;
   if (a.includes('create') || a.includes('crear') || a.includes('reactivate')) return 'green' as const;
   if (a.includes('login')) return 'blue' as const;
+  if (a.endsWith('_follow')) return 'amber' as const;
   if (a.includes('migrat') || a.includes('xtream') || a.includes('import')) return 'purple' as const;
   return 'gray' as const;
 }
@@ -52,7 +54,21 @@ export function LogsPage() {
         columns={[
           { key: 'date', header: 'Fecha', render: (l) => <span className="nowrap">{formatDateTime(l.created_at)}</span> },
           { key: 'admin', header: 'Cuenta', render: (l) => <span className="strong">{l.admin_username ?? 'Sistema'}</span> },
-          { key: 'action', header: 'Acción', render: (l) => <Badge tone={actionTone(l.action ?? '')}>{l.action}</Badge> },
+          {
+            key: 'action',
+            header: 'Acción',
+            render: (l) => {
+              const label = LOG_ACTION_LABEL[l.action ?? ''];
+              return (
+                <div className="cell-main">
+                  <span>
+                    <Badge tone={actionTone(l.action ?? '')}>{l.action}</Badge>
+                  </span>
+                  {label && <span className="muted text-xs">{label}</span>}
+                </div>
+              );
+            },
+          },
           {
             key: 'entity',
             header: 'Entidad',

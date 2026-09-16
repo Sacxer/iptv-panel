@@ -30,6 +30,7 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ de
 const LogsPage = lazy(() => import('./pages/LogsPage').then((m) => ({ default: m.LogsPage })));
 const DevicesPage = lazy(() => import('./pages/devices/DevicesPage').then((m) => ({ default: m.DevicesPage })));
 const ServersPage = lazy(() => import('./pages/streaming/ServersPage').then((m) => ({ default: m.ServersPage })));
+const MainServerPage = lazy(() => import('./pages/streaming/MainServerPage').then((m) => ({ default: m.MainServerPage })));
 const ServerDetailPage = lazy(() => import('./pages/streaming/ServerDetailPage').then((m) => ({ default: m.ServerDetailPage })));
 const ProfilesPage = lazy(() => import('./pages/streaming/ProfilesPage').then((m) => ({ default: m.ProfilesPage })));
 const AstraPage = lazy(() => import('./pages/streaming/AstraPage').then((m) => ({ default: m.AstraPage })));
@@ -90,6 +91,7 @@ export function App() {
         <Route path="version" element={<RequireAdmin><VersionPage /></RequireAdmin>} />
         <Route path="ordenar-canales" element={<RequireAdmin><ChannelOrderPage /></RequireAdmin>} />
         <Route path="servidores" element={<RequireAdmin><ServersPage /></RequireAdmin>} />
+        <Route path="servidores/principal" element={<RequireAdmin><MainServerPage /></RequireAdmin>} />
         <Route path="servidores/:id" element={<RequireAdmin><ServerDetailPage /></RequireAdmin>} />
         <Route path="perfiles" element={<RequireAdmin><ProfilesPage /></RequireAdmin>} />
         <Route path="astra" element={<RequireAdmin><AstraPage /></RequireAdmin>} />

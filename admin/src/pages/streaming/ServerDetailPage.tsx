@@ -10,7 +10,7 @@ import { DeliveryBadge } from '../../components/DeliverySelector';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/Toast';
 import { Alert, Badge, CopyButton, ErrorState, PageHeader, PageLoader, Spinner } from '../../components/ui';
-import { isLocalUrl, NetworkPortsList } from '../settings/NetworkPanel';
+import { isLocalUrl, NetworkPortsList, UrlFollowSwitch } from '../settings/NetworkPanel';
 import type { ServerStream, StreamingServer } from '../../types';
 import { formatMbps, formatNumber, formatUptime, timeAgo, truncate } from '../../utils/format';
 import { SERVER_STATUS, STREAM_STATE } from '../../utils/labels';
@@ -261,6 +261,7 @@ export function ServerDetailPage() {
 function NodeNetworkCard({ server, onChanged }: { server: StreamingServer; onChanged: (s: StreamingServer) => void }) {
   const toast = useToast();
   const [busyIp, setBusyIp] = useState<string | null>(null);
+  const [savingAuto, setSavingAuto] = useState(false);
   const net = server.network ?? null;
   const suggestions = server.url_suggestions ?? [];
 
@@ -274,6 +275,18 @@ function NodeNetworkCard({ server, onChanged }: { server: StreamingServer; onCha
       toast.error(errorMessage(e));
     } finally {
       setBusyIp(null);
+    }
+  };
+
+  const saveAuto = async (value: boolean) => {
+    setSavingAuto(true);
+    try {
+      onChanged(await api.servers.update(server.id, { public_url_auto: value }));
+      toast.success(value ? 'La URL seguirá a la IP de su interfaz' : 'La URL queda fija');
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setSavingAuto(false);
     }
   };
 
@@ -310,6 +323,14 @@ function NodeNetworkCard({ server, onChanged }: { server: StreamingServer; onCha
           <span className="text-sm">se detectará al conectar el nodo</span>
         )}
       </div>
+      <UrlFollowSwitch
+        url={server.public_url ?? ''}
+        auto={Boolean(server.public_url_auto)}
+        iface={server.public_url_interface}
+        ports={net ? net.ports ?? [] : null}
+        busy={savingAuto}
+        onChange={(v) => void saveAuto(v)}
+      />
       {(!server.public_url || isLocalUrl(server.public_url)) && (
         <Alert tone="amber" icon={<TriangleAlert size={18} />}>
           {server.public_url

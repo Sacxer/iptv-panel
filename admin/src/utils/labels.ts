@@ -167,6 +167,15 @@ export const CUT_MODE: Record<CutMode, { label: string; short: string }> = {
   both: { label: 'Ambos', short: 'WispHub y cortes manuales' },
 };
 
+/** Acciones del registro de actividad con un texto propio. */
+export const LOG_ACTION_LABEL: Record<string, string> = {
+  'system.public_url_follow': 'La IP del servidor cambió: URL actualizada',
+  'server.ip_follow': 'La IP del nodo cambió: URL actualizada',
+  'system.ports': 'Cambió los puertos para clientes',
+  'system.ports_separation': 'Cambió la separación de panel y clientes',
+  'server.use_ip': 'Eligió la IP de una interfaz para el nodo',
+};
+
 export const BILLING_ACTION: Record<string, { label: string; tone: Tone }> = {
   suspend: { label: 'Suspender', tone: 'red' },
   disable: { label: 'Deshabilitar', tone: 'gray' },

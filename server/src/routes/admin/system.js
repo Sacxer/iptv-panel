@@ -14,7 +14,10 @@ import { getMetrics } from '../../services/systemMetrics.js';
 import { backupOverview } from '../../services/backup.js';
 import { activeClientPorts, toClientUrl } from '../../services/listeners.js';
 import { currentBuild, lastCheck } from '../../services/githubUpdates.js';
-import { interfaceOfUrl, localPorts } from '../../services/ipFollow.js';
+import { interfaceOfUrl, isLanIp, localPorts } from '../../services/ipFollow.js';
+
+/** Una URL puede seguir la IP si es de una interfaz de la máquina o una IP de red local. */
+const followable = (url, iface) => Boolean(iface) || isLanIp(String(url || '').replace(/^https?:\/\/\[?([^\]/:]+).*$/i, '$1'));
 import {
   detectPublicIp, listListeningPorts, listNetworkPorts, publicBaseUrl, suggestPublicUrls,
 } from '../../services/network.js';
@@ -248,8 +251,12 @@ systemRouter.put('/settings', adminOnly, async (req, res) => {
     // Si es una IP de este servidor, la URL sigue a esa interfaz cuando la IP cambie.
     const iface = interfaceOfUrl(patch.public_url, localPorts());
     patch.public_url_interface = iface || '';
-    patch.public_url_auto = body.public_url_auto === undefined ? Boolean(iface) : bool(body.public_url_auto);
+    patch.public_url_auto = body.public_url_auto === undefined ? Boolean(iface) : bool(body.public_url_auto) && followable(patch.public_url, iface);
   } else if (body.public_url_auto !== undefined) {
+    const current = await getSettings();
+    if (bool(body.public_url_auto) && !followable(current.public_url, current.public_url_interface)) {
+      throw new HttpError(400, 'Esta URL no puede seguir la IP: es un dominio o una IP pública (no cambia con el router)');
+    }
     patch.public_url_auto = bool(body.public_url_auto);
   }
   if (body.alternate_urls !== undefined) {

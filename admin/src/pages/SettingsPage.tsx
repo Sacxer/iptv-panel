@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { ArrowRight, Info, KeyRound, MonitorSmartphone, Save, ScanSearch, ZapOff } from 'lucide-react';
+import { ArrowRight, House, Info, KeyRound, MonitorSmartphone, Network, Save, ScanSearch, ZapOff } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, errorMessage } from '../api';
 import { useAsync } from '../hooks/useAsync';
 import { useToast } from '../components/Toast';
 import { Alert, ErrorState, FormField, PageHeader, PageLoader, Select, Spinner, Switch, Tabs } from '../components/ui';
-import { NetworkPanel } from './settings/NetworkPanel';
 import { CompanyPanel } from './settings/CompanyPanel';
 import type { DeviceOwnership, SettingsInput, StreamMode } from '../types';
 import { isValidUrl } from '../utils/format';
@@ -133,7 +132,6 @@ export function SettingsPage() {
   const save = async () => {
     const e: Errors = {};
     if (!form.server_name.trim()) e.server_name = 'El nombre del servidor es obligatorio';
-    if (form.public_url.trim() && !isValidUrl(form.public_url.trim())) e.public_url = 'URL no válida (ej.: http://tv.midominio.com:25461)';
     if (form.stream_mode === 'xtream_upstream') {
       if (!form.xtream_upstream_url.trim()) e.xtream_upstream_url = 'Indica la URL del XtreamUI de origen';
       else if (!isValidUrl(form.xtream_upstream_url.trim())) e.xtream_upstream_url = 'URL no válida';
@@ -168,7 +166,6 @@ export function SettingsPage() {
     setSaveError(null);
     const body: SettingsInput = {
       server_name: form.server_name.trim(),
-      public_url: form.public_url.trim().replace(/\/+$/, ''),
       stream_mode: form.stream_mode,
       xtream_upstream_url: form.xtream_upstream_url.trim().replace(/\/+$/, ''),
       epg_url: form.epg_url.trim(),
@@ -226,7 +223,23 @@ export function SettingsPage() {
       {tab === 'empresa' ? (
         <CompanyPanel />
       ) : tab === 'red' ? (
-        <NetworkPanel onPublicUrlSaved={(url) => setForm((f) => (f ? { ...f, public_url: url } : f))} />
+        <section className="card settings-moved">
+          <h2 className="card-title">
+            <Network size={18} /> Red y URL para clientes
+          </h2>
+          <p className="no-margin">
+            La IP y los puertos del portal se configuran en <strong>Servidores → Servidor principal</strong>.
+          </p>
+          <p className="muted text-sm no-margin">
+            Allí están la URL para clientes (y si sigue a la IP de su interfaz), las direcciones alternativas, el identificador del portal, los puertos
+            para clientes (Xtream Codes / M3U) con la separación del panel, las IPs de cada interfaz de red y los puertos TCP a la escucha.
+          </p>
+          <div>
+            <Link to="/servidores/principal" className="btn btn-primary">
+              <House size={16} /> Ir a Servidor principal <ArrowRight size={16} />
+            </Link>
+          </div>
+        </section>
       ) : (
       <>
       {saveError && <Alert tone="red">{saveError}</Alert>}
@@ -238,19 +251,18 @@ export function SettingsPage() {
             <input className="input" value={form.server_name} onChange={(e) => set('server_name', e.target.value)} />
           </FormField>
           <FormField
-            label="URL pública"
-            error={errors.public_url}
+            label="URL para clientes"
             hint={
               <>
-                Dirección con la que los clientes acceden (incluye puerto). Se usa para generar las listas M3U y los datos de acceso. Si se deja vacía se
-                detecta automáticamente.{' '}
-                <button type="button" className="btn btn-link btn-sm inline-link" onClick={() => setTab('red')}>
-                  Ver IPs del servidor y sugerencias
-                </button>
+                Dirección con la que los clientes acceden (incluye puerto); se usa en las listas M3U y los datos de acceso. Se cambia en{' '}
+                <Link to="/servidores/principal" className="link">
+                  Servidores → Servidor principal
+                </Link>
+                , junto con los puertos.
               </>
             }
           >
-            <input className="input mono" value={form.public_url} onChange={(e) => set('public_url', e.target.value)} placeholder="http://tv.midominio.com:25461" />
+            <input className="input mono" value={form.public_url} readOnly placeholder="Sin configurar (se detecta automáticamente)" />
           </FormField>
           <FormField label="Zona horaria" required error={errors.timezone}>
             <input className="input" list="tz-list" value={form.timezone} onChange={(e) => set('timezone', e.target.value)} />

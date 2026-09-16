@@ -18,7 +18,8 @@ export async function portGuard(req, res, next) {
   if (role === 'clients' && (PANEL_PATHS.test(req.path) || req.path === '/')) {
     return res.status(404).type('text').send('Portal IPTV');
   }
-  if (role === 'panel' && (CLIENT_PATHS.test(req.path) || (LEGACY_STREAM.test(req.path) && !req.path.startsWith('/api/')))) {
+  const panelPath = PANEL_PATHS.test(req.path);
+  if (role === 'panel' && !panelPath && (CLIENT_PATHS.test(req.path) || (LEGACY_STREAM.test(req.path) && !req.path.startsWith('/api/')))) {
     const port = activeClientPorts()[0];
     if (req.path.startsWith('/api/')) return res.status(404).json({ error: `Este es el puerto del panel. Los clientes usan el puerto ${port}.` });
     return res.status(404).type('text').send(`Este es el puerto del panel. Los clientes usan el puerto ${port}.`);

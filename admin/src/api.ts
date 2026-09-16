@@ -60,6 +60,9 @@ import type {
   EpgSource,
   EpgStatus,
   NetworkInfo,
+  PortCheck,
+  PortsInfo,
+  PortsSaveResult,
   PublicIpInfo,
   DeviceBulkResult,
   DeviceCheckResult,
@@ -603,6 +606,10 @@ export const api = {
     metrics: () => get<SystemMetrics>('/system/metrics'),
     network: (external = false) => get<NetworkInfo>('/system/network', external ? { external: 'true' } : undefined),
     publicIp: () => get<PublicIpInfo>('/system/public-ip'),
+    ports: () => get<PortsInfo>('/system/ports'),
+    checkPort: (port: number) => post<PortCheck>('/system/ports/check', { port }),
+    savePorts: (input: { client_ports: number[]; update_public_url: boolean }) => put<PortsSaveResult>('/system/ports', input),
+    setSeparation: (separate: boolean) => put<PortsInfo & { public_url_changed: string | null }>('/system/ports', { separate_ports: separate }),
   },
 
   logs: {

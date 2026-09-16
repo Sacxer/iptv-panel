@@ -942,3 +942,138 @@ button.summary-value { border: 0; background: transparent; padding: 0; cursor: p
 
 .upd-embedded { margin: 16px 0 0; }
 .apprel-card.is-highlighted { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 30%, transparent); scroll-margin-top: calc(var(--topbar-h, 56px) + 12px); }
+
+/* ---------- Servidores → Servidor principal (este portal) ---------- */
+.main-server-card {
+  border-top: 3px solid var(--primary);
+  background: linear-gradient(135deg, var(--primary-soft), transparent 55%), var(--surface);
+  margin-bottom: 22px;
+}
+.main-server-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--primary-soft);
+  color: var(--primary-text);
+  flex-shrink: 0;
+}
+.main-server-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+.main-server-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  min-width: 0;
+}
+.main-server-field .scs-label { display: inline-flex; align-items: center; gap: 4px; }
+.main-server-url { flex-wrap: nowrap; min-width: 0; max-width: 100%; }
+.main-server-url .mono { font-size: 14px; font-weight: 600; min-width: 0; }
+.port-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.port-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 13px;
+  font-weight: 600;
+}
+.port-chip.is-amber { border-color: var(--amber); }
+.port-chip.is-red { border-color: var(--red); }
+.port-chip .muted { font-weight: 400; font-size: 11.5px; }
+.servers-nodes-title { margin: 0 0 12px; }
+
+/* Puertos del portal */
+.ports-card { display: flex; flex-direction: column; gap: 14px; }
+.ports-card .section-header { margin-bottom: 0; }
+.ports-card .table-card { margin: 0; }
+.ports-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.ports-panel .field-label, .ports-card .field-label.no-margin { margin: 0; }
+.ports-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ports-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  min-width: 0;
+}
+.ports-list li:first-child { border-color: var(--primary); }
+.ports-list li.has-error { border-color: var(--red); }
+.ports-order {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.ports-num { font-size: 15px; min-width: 46px; }
+.ports-error { flex-basis: 100%; }
+.ports-add { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ports-result { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 10px; border: 1px dashed var(--border-strong); }
+.ports-result .field-label { margin: 0; display: inline-flex; align-items: center; gap: 6px; }
+.ports-result .plain-list { margin: 0; }
+.ports-result .code-block { margin: 0; white-space: pre-wrap; word-break: break-all; }
+.settings-moved { display: flex; flex-direction: column; gap: 10px; max-width: 760px; }
+.settings-moved .card-title { margin-bottom: 0; }
+.net-scanning { display: flex; justify-content: center; padding: 28px 20px; }
+.url-follow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* Puertos del portal: panel frente a clientes y separación */
+.ports-roles { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.ports-role {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--purple);
+  min-width: 0;
+}
+.ports-role.is-clients { border-left-color: var(--green); }
+.ports-role-value { font-size: 18px; font-weight: 700; overflow-wrap: anywhere; }
+.ports-separation { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 10px; border: 1px solid var(--border); }
+.ports-separation .switch-desc { max-width: none; }
+
+/* Direcciones alternativas */
+.alt-urls-card { display: flex; flex-direction: column; gap: 12px; }
+.alt-urls-card .card-title { margin-bottom: 0; }
+.alt-urls { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.alt-urls li { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; border: 1px solid var(--border); border-radius: 10px; min-width: 0; }
+.alt-urls li .mono { min-width: 0; }
+.alt-urls-add { display: flex; gap: 8px; align-items: center; }
+.alt-urls-add .input { flex: 1; min-width: 0; }
+.alt-urls-quick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.alt-urls-quick .chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; }
+.alt-urls-quick .chip .mono { overflow: hidden; text-overflow: ellipsis; }
+.portal-id { display: flex; flex-direction: column; gap: 2px; padding-top: 10px; border-top: 1px solid var(--border); min-width: 0; }
+.portal-id .row-inline { min-width: 0; max-width: 100%; }
+.ports-actions { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; }

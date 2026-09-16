@@ -563,6 +563,14 @@ export interface XtreamDbSettings {
 export interface Settings {
   server_name: string;
   public_url: string;
+  /** La URL para clientes sigue a su interfaz si cambia la IP (DHCP, cortes de luz). */
+  public_url_auto?: boolean;
+  /** Interfaz de la IP de la URL (solo lectura). */
+  public_url_interface?: string | null;
+  /** Otras direcciones del portal (dominio, IP de otra red, VPN…) que prueban la app y los nodos. Máx. 10. */
+  alternate_urls?: string[];
+  /** Identificador fijo del portal (solo lectura). */
+  install_id?: string;
   stream_mode: StreamMode;
   xtream_upstream_url: string;
   epg_url: string;
@@ -755,6 +763,44 @@ export interface PublicIpInfo {
   source?: string | null;
   scope?: IpScope | null;
   error?: string | null;
+}
+
+export interface PortListener {
+  port: number;
+  role: 'panel' | 'clients' | string;
+  status: 'listening' | 'waiting' | 'error' | string;
+  error: string | null;
+  /** Milisegundos desde que está en ese estado. */
+  since: number | null;
+}
+
+export interface PortsInfo {
+  panel_port: number;
+  client_ports: number[];
+  source: 'panel' | 'env' | string;
+  discovery_port: number | null;
+  public_url: string;
+  listeners: PortListener[];
+  firewall_helper: boolean;
+  /** Separación panel / clientes: el panel no atiende a los clientes y los puertos de clientes no sirven el panel. */
+  separate_ports?: boolean;
+  separation_active?: boolean;
+  xtream: { on_server: string | null; migrated_from: string | null; suggested_port: number | null; original_port: number | null };
+}
+
+export interface PortsSaveResult extends PortsInfo {
+  results: { port: number; ok: boolean; error?: string; closed?: boolean; already?: boolean }[];
+  public_url_changed: string | null;
+  firewall: { port: number; ok: boolean; manual?: string; error?: string }[];
+}
+
+export interface PortCheck {
+  port: number;
+  available: boolean;
+  in_use_by_portal?: boolean;
+  panel?: boolean;
+  code?: string;
+  error?: string;
 }
 
 export interface NetworkInfo {
@@ -1293,6 +1339,9 @@ export interface StreamingServer {
   /** Interfaces de red que informa el nodo (null si aún no las informó). */
   network?: ServerNetwork | null;
   url_suggestions?: ServerUrlSuggestion[];
+  /** La URL pública sigue a su interfaz si cambia la IP del nodo. */
+  public_url_auto?: boolean;
+  public_url_interface?: string | null;
 }
 
 export interface ServerNetwork {
@@ -1316,6 +1365,7 @@ export interface ServerUrlSuggestion {
 export interface ServerInput {
   name: string;
   public_url: string;
+  public_url_auto: boolean;
   max_clients: number;
   weight: number;
   enabled: boolean;

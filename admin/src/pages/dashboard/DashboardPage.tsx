@@ -93,8 +93,8 @@ export function DashboardPage() {
               <>La URL para clientes no está configurada: los enlaces M3U y las apps podrían recibir una dirección local.</>
             )}
           </span>
-          <Link to="/ajustes?tab=red" className="outage-link">
-            Revisar en Ajustes → Red
+          <Link to="/servidores/principal" className="outage-link">
+            Revisar en Servidores → Servidor principal
           </Link>
         </div>
       )}

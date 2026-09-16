@@ -9,6 +9,7 @@ import type { StreamingServer } from '../../types';
 import { formatMbps, formatNumber, timeAgo } from '../../utils/format';
 import { SERVER_STATUS, encoderLabel } from '../../utils/labels';
 import { InstallModal, ServerFormModal } from './ServerModals';
+import { MainServerCard } from './MainServerCard';
 
 export function meterTone(p: number | null | undefined) {
   if (p === null || p === undefined) return 'gray';
@@ -63,13 +64,17 @@ export function ServersPage() {
     <>
       <PageHeader
         title="Servidores de streaming"
-        subtitle="Nodos que reenvían o transcodifican canales y reparten la señal a los clientes"
+        subtitle="Este portal y los nodos que reenvían o transcodifican canales y reparten la señal a los clientes"
         actions={
           <button type="button" className="btn btn-primary" onClick={() => setFormOpen(true)}>
             <Plus size={16} /> Agregar servidor
           </button>
         }
       />
+
+      <MainServerCard />
+
+      <h2 className="section-title servers-nodes-title">Nodos de streaming</h2>
 
       {data && servers.length > 0 && (
         <div className="summary-strip">

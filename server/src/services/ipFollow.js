@@ -16,11 +16,18 @@ function splitUrl(url) {
 }
 
 const isIp = (host) => IPV4.test(host) || host.includes(':');
+const isLoopback = (ip) => /^127\./.test(ip) || ip === '::1';
+/** IP de red local (privada, CGNAT o de enlace): la que un router puede cambiar. Una pública detrás de NAT no. */
+export function isLanIp(ip) {
+  if (!IPV4.test(ip)) return /^f[cd]/i.test(ip);
+  const [a, b] = ip.split('.').map(Number);
+  return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254);
+}
 
 /** Interfaz (de os.networkInterfaces() o de la lista de un nodo) que tiene la IP de la URL, o null. */
 export function interfaceOfUrl(url, ports) {
   const u = splitUrl(url);
-  if (!u || !isIp(u.host)) return null;
+  if (!u || !isIp(u.host) || isLoopback(u.host)) return null;
   for (const p of ports) {
     if ((p.addresses || []).some((a) => a.address === u.host)) return p.name;
   }
@@ -48,7 +55,9 @@ export function localPorts(interfaces = os.networkInterfaces()) {
  */
 export function followUrl(url, ports, iface, rank) {
   const u = splitUrl(url);
-  if (!u || !isIp(u.host)) return null;
+  if (!u || !isIp(u.host) || isLoopback(u.host)) return null;
+  // Solo IP de red local o de una interfaz conocida: una IP pública (NAT) o un dominio nunca se cambian.
+  if (!iface && !isLanIp(u.host)) return null;
   if (ports.some((p) => (p.addresses || []).some((a) => a.address === u.host))) return null;
   const candidates = rank(ports).filter((a) => a.family === 'IPv4' || a.family === 4);
   const best = (iface && candidates.find((a) => a.interface === iface)) || candidates[0];

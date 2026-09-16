@@ -7,6 +7,7 @@ import {
   CalendarPlus,
   CircleCheck,
   LogIn,
+  Network,
   Pencil,
   Play,
   Plus,
@@ -20,6 +21,7 @@ import { StatusBadge } from '../../components/StatusBadge';
 import type { LogEntry, User } from '../../types';
 import { formatDate, formatDateTime, logDetails, relativeExpiry, timeAgo } from '../../utils/format';
 import { Panel } from './Panel';
+import { LOG_ACTION_LABEL } from '../../utils/labels';
 
 // ---------- Próximos a vencer ----------
 
@@ -80,6 +82,7 @@ const ENTITY_LABEL: Record<string, string> = {
   settings: 'los ajustes',
   connection: 'la conexión',
   xtream: 'la migración',
+  server: 'el servidor',
 };
 
 type Verb = { text: string; icon: ReactNode; tone: string };
@@ -127,6 +130,19 @@ function describe(log: LogEntry): { who: string; text: string; verb: Verb } {
   const who = log.admin_username ?? 'Sistema';
   const d = parseDetails(log.details);
   if (/login|password/i.test(action)) return { who, text: verb.text, verb };
+
+  // La URL siguió a la IP de su interfaz (tras un corte de luz / DHCP): lo hace el sistema.
+  if (action === 'system.public_url_follow' || action === 'server.ip_follow') {
+    const url = typeof d.url === 'string' ? d.url : null;
+    const text = `${LOG_ACTION_LABEL[action]}${url ? ` (${url})` : ''}`;
+    return { who: '', text, verb: { text, icon: <Network size={14} />, tone: 'amber' } };
+  }
+  if (action === 'system.ports_separation') {
+    const on = d.separate === true || d.separate === 1;
+    return { who, text: on ? 'separó el panel de los clientes' : 'dejó de separar el panel de los clientes', verb: { ...verb, icon: <Network size={14} />, tone: on ? 'green' : 'amber' } };
+  }
+  if (action === 'system.ports') return { who, text: 'cambió los puertos para clientes', verb: { ...verb, icon: <Network size={14} />, tone: 'blue' } };
+  if (action === 'server.use_ip') return { who, text: `eligió la IP de una interfaz para el nodo${log.entity_id ? ` #${log.entity_id}` : ''}`, verb: { ...verb, icon: <Network size={14} />, tone: 'blue' } };
 
   // Casos con un texto más natural.
   if (action === 'stream.check') {
@@ -176,12 +192,12 @@ export function ActivityPanel({ logs, isAdmin, className = '' }: { logs: LogEntr
         <ul className="activity-compact">
           {rows.map((log) => {
             const d = describe(log);
-            const full = [`${d.who} ${d.text}`, logDetails(log.details), formatDateTime(log.created_at)].filter(Boolean).join('\n');
+            const full = [`${d.who} ${d.text}`.trim(), logDetails(log.details), formatDateTime(log.created_at)].filter(Boolean).join('\n');
             return (
               <li key={log.id} className="activity-row" title={full}>
                 <span className={`activity-icon stat-${d.verb.tone}`}>{d.verb.icon}</span>
                 <span className="activity-text">
-                  <strong>{d.who}</strong> {d.text}
+                  {d.who && <strong>{d.who}</strong>} {d.text}
                 </span>
                 <span className="activity-time">{timeAgo(log.created_at)}</span>
               </li>
