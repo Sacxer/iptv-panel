@@ -1,4 +1,6 @@
 // Servidores de streaming (nodos): elección de servidor por canal, firma de accesos y latidos (heartbeats).
+import { followUrl, interfaceOfUrl } from './ipFollow.js';
+import { logAction } from '../lib/log.js';
 import crypto from 'node:crypto';
 import { db } from '../db/index.js';
 import { getSettings } from '../lib/settings.js';
@@ -47,12 +49,20 @@ export async function onlineServers() {
 }
 
 /** URL del nodo con la IP de su interfaz principal (nunca loopback) y el puerto en el que escucha. */
+const nodePorts = (network) => (network?.ports || []).map((p) => ({ ...p, type_label: p.type }));
+
+/** URL del nodo con la IP de su interfaz principal: { url, interface } o null. */
 export function nodeUrlFromNetwork(network) {
-  const ports = (network?.ports || []).map((p) => ({ ...p, type_label: p.type }));
-  const best = rankAddresses(ports).find((a) => a.family === 'IPv4') || rankAddresses(ports)[0];
+  const ranked = rankAddresses(nodePorts(network));
+  const best = ranked.find((a) => a.family === 'IPv4') || ranked[0];
   if (!best) return null;
   const host = best.address.includes(':') ? `[${best.address}]` : best.address;
-  return `http://${host}:${Number(network.listen_port) || 8090}`;
+  return { url: `http://${host}:${Number(network.listen_port) || 8090}`, interface: best.interface };
+}
+
+/** Interfaz del nodo que tiene la IP de la URL (para que la URL la siga si cambia). */
+export function nodeInterfaceOf(url, network) {
+  return interfaceOfUrl(url, nodePorts(network));
 }
 
 /**
@@ -152,8 +162,15 @@ export async function handleHeartbeat(server, body, ip) {
     networkPatch.network = JSON.stringify({ ...body.network, reported_at: t });
     // Servidor creado sin URL: se toma la IP de la interfaz principal del nodo.
     if (!server.public_url) {
-      const url = nodeUrlFromNetwork(body.network);
-      if (url) networkPatch.public_url = url;
+      const found = nodeUrlFromNetwork(body.network);
+      if (found) Object.assign(networkPatch, { public_url: found.url, public_url_auto: true, public_url_interface: found.interface });
+    } else if (bool(server.public_url_auto)) {
+      // La IP del nodo cambió (p. ej. DHCP tras un corte de luz): la URL sigue a su interfaz.
+      const change = followUrl(server.public_url, nodePorts(body.network), server.public_url_interface, rankAddresses);
+      if (change) {
+        Object.assign(networkPatch, { public_url: change.url, public_url_interface: change.interface });
+        await logAction(null, 'server.ip_follow', 'server', server.id, change);
+      }
     }
   }
   await db('servers').where({ id: server.id }).update({

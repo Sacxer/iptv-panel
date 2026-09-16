@@ -14,6 +14,7 @@ import { getMetrics } from '../../services/systemMetrics.js';
 import { backupOverview } from '../../services/backup.js';
 import { activeClientPorts } from '../../services/listeners.js';
 import { currentBuild, lastCheck } from '../../services/githubUpdates.js';
+import { interfaceOfUrl, localPorts } from '../../services/ipFollow.js';
 import {
   detectPublicIp, listListeningPorts, listNetworkPorts, publicBaseUrl, suggestPublicUrls,
 } from '../../services/network.js';
@@ -241,7 +242,15 @@ systemRouter.put('/settings', adminOnly, async (req, res) => {
   const body = req.body || {};
   const patch = {};
   if (body.server_name !== undefined) patch.server_name = String(body.server_name).slice(0, 100);
-  if (body.public_url !== undefined) patch.public_url = String(body.public_url).trim().replace(/\/+$/, '');
+  if (body.public_url !== undefined) {
+    patch.public_url = String(body.public_url).trim().replace(/\/+$/, '');
+    // Si es una IP de este servidor, la URL sigue a esa interfaz cuando la IP cambie.
+    const iface = interfaceOfUrl(patch.public_url, localPorts());
+    patch.public_url_interface = iface || '';
+    patch.public_url_auto = body.public_url_auto === undefined ? Boolean(iface) : bool(body.public_url_auto);
+  } else if (body.public_url_auto !== undefined) {
+    patch.public_url_auto = bool(body.public_url_auto);
+  }
   if (body.stream_mode !== undefined) patch.stream_mode = oneOf(body.stream_mode, ['redirect', 'proxy', 'xtream_upstream'], 'stream_mode');
   if (body.xtream_upstream_url !== undefined) patch.xtream_upstream_url = String(body.xtream_upstream_url).trim().replace(/\/+$/, '');
   if (body.epg_url !== undefined) patch.epg_url = String(body.epg_url).trim();

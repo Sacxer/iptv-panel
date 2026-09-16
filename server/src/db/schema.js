@@ -630,6 +630,20 @@ const migrations = {
       await knex.schema.dropTableIfExists('app_releases');
     },
   },
+  '012_server_url_follow': {
+    async up(knex) {
+      await knex.schema.alterTable('servers', (t) => {
+        t.boolean('public_url_auto').notNullable().defaultTo(false); // la URL sigue a su interfaz si cambia la IP
+        t.string('public_url_interface', 64);
+      });
+    },
+    async down(knex) {
+      await knex.schema.alterTable('servers', (t) => {
+        t.dropColumn('public_url_auto');
+        t.dropColumn('public_url_interface');
+      });
+    },
+  },
 };
 
 export const migrationSource = {

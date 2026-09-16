@@ -5,6 +5,9 @@ import { parseJson } from './util.js';
 export const DEFAULT_SETTINGS = {
   server_name: 'Mi IPTV',
   public_url: '',
+  // La URL sigue a su interfaz si la IP cambia (DHCP tras un corte de luz). Solo si es una IP de la máquina.
+  public_url_auto: false,
+  public_url_interface: '',
   stream_mode: 'redirect', // redirect | proxy | xtream_upstream
   xtream_upstream_url: '',
   epg_url: '',

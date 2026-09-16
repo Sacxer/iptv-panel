@@ -1,5 +1,6 @@
 // Red del servidor: interfaces (puertos de red) con sus IPs, puerta de enlace, puertos TCP a la escucha
 // y la URL que usan los clientes. Muchos servidores no tienen IP pública: se usa la IP de la interfaz principal.
+import { interfaceOfUrl, localPorts } from './ipFollow.js';
 import { activeClientPorts, configuredClientPorts } from './listeners.js';
 import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
@@ -368,7 +369,9 @@ export async function autoConfigurePublicUrl(saveSettings, log = console.log) {
   const settings = await getSettings();
   if (settings.public_url) return null;
   if (process.env.PUBLIC_URL) {
-    await saveSettings({ public_url: process.env.PUBLIC_URL.replace(/\/+$/, '') });
+    const envUrl = process.env.PUBLIC_URL.replace(/\/+$/, '');
+    const iface = interfaceOfUrl(envUrl, localPorts());
+    await saveSettings({ public_url: envUrl, public_url_auto: Boolean(iface), public_url_interface: iface || '' });
     log(`URL para clientes configurada desde PUBLIC_URL: ${process.env.PUBLIC_URL}`);
     return process.env.PUBLIC_URL;
   }
@@ -376,7 +379,7 @@ export async function autoConfigurePublicUrl(saveSettings, log = console.log) {
   const best = rankAddresses(await listNetworkPorts()).find((a) => a.family === 'IPv4');
   if (!best) return null;
   const url = urlFor(best.address, (await configuredClientPorts())[0] || config.port);
-  await saveSettings({ public_url: url });
+  await saveSettings({ public_url: url, public_url_auto: true, public_url_interface: best.interface });
   log(`URL para clientes configurada: ${url} (${best.interface_label} «${best.interface}»). Puedes cambiarla en Ajustes → Red.`);
   return url;
 }

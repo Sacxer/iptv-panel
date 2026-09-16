@@ -7,7 +7,7 @@ import { getSettings } from '../../lib/settings.js';
 import {
   HttpError, bool, int, now, oneOf, parseJson, requireFields,
 } from '../../lib/util.js';
-import { generateServerToken, nodeUrlFromNetwork, serializeProfile } from '../../services/nodes.js';
+import { generateServerToken, nodeInterfaceOf, serializeProfile } from '../../services/nodes.js';
 import { publicBaseUrl, rankAddresses } from '../../services/network.js';
 
 const router = Router();
@@ -42,6 +42,8 @@ async function serializeServers(rows, req) {
       id: s.id,
       name: s.name,
       public_url: s.public_url,
+      public_url_auto: bool(s.public_url_auto),
+      public_url_interface: s.public_url_interface || null,
       enabled: bool(s.enabled),
       max_clients: Number(s.max_clients),
       weight: Number(s.weight),
@@ -108,6 +110,14 @@ router.get('/servers/:id', async (req, res) => {
 router.put('/servers/:id', async (req, res) => {
   const row = await loadServer(req.params.id);
   const fields = serverFields(req.body || {}, false);
+  if (fields.public_url !== undefined) {
+    // Una IP de las interfaces del nodo sigue a su interfaz; un dominio o una IP externa se quedan fijos.
+    const iface = fields.public_url ? nodeInterfaceOf(fields.public_url, parseJson(row.network, null)) : null;
+    fields.public_url_interface = iface;
+    fields.public_url_auto = req.body.public_url_auto === undefined ? (!fields.public_url || Boolean(iface)) : bool(req.body.public_url_auto);
+  } else if (req.body?.public_url_auto !== undefined) {
+    fields.public_url_auto = bool(req.body.public_url_auto);
+  }
   if (Object.keys(fields).length) await db('servers').where({ id: row.id }).update({ ...fields, updated_at: now() });
   await logAction(req.admin, 'server.update', 'server', row.id, fields);
   res.json((await serializeServers([await db('servers').where({ id: row.id }).first()], req))[0]);
@@ -122,7 +132,10 @@ router.post('/servers/:id/use-ip', async (req, res) => {
   if (!known) throw new HttpError(400, 'Esa IP no está entre las interfaces que informó el nodo');
   const port = int(req.body?.port, 0) || Number(network?.listen_port) || 8090;
   const url = `http://${ip.includes(':') ? `[${ip}]` : ip}:${port}`;
-  await db('servers').where({ id: row.id }).update({ public_url: url, updated_at: now() });
+  const iface = (network?.ports || []).find((p) => (p.addresses || []).some((a) => a.address === ip))?.name || null;
+  await db('servers').where({ id: row.id }).update({
+    public_url: url, public_url_auto: true, public_url_interface: iface, updated_at: now(),
+  });
   await logAction(req.admin, 'server.use_ip', 'server', row.id, { url });
   res.json((await serializeServers([await db('servers').where({ id: row.id }).first()], req))[0]);
 });

@@ -710,6 +710,17 @@ El puerto principal también atiende a los clientes.
   (`/usr/local/sbin/iptv-firewall`, vía sudo); si no está, `manual` trae el comando.
 - En el servidor: `sudo bash /opt/iptv/install-ubuntu.sh --set-clients-port 25461` hace lo mismo desde la consola.
 
+### Arranque automático y cambio de IP (cortes de luz)
+- El portal (`iptv-portal`) y los nodos (`iptv-node`) son servicios de systemd **activados**: arrancan solos al encender el
+  servidor, esperan a que la red esté lista (`network-online.target`), se reinician si fallan (`Restart=always`) y nunca dejan
+  de reintentar (`StartLimitIntervalSec=0`). Con Docker: `restart: unless-stopped`.
+- **La URL para clientes sigue a su interfaz**: si es una IP de la propia máquina y el router (DHCP) le da otra IP tras un corte,
+  se actualiza sola (el portal revisa al arrancar y cada 2 min; los nodos en cada latido). Un dominio o una IP que no está en
+  ninguna interfaz (IP pública detrás de NAT) nunca se cambia. Queda registrado (`system.public_url_follow`, `server.ip_follow`).
+- Ajustes: `public_url_auto` (bool) y `public_url_interface` (solo lectura). Al guardar `public_url` se activa solo si es una IP
+  de una interfaz; se puede forzar con `public_url_auto`. Servidores: mismos campos en el objeto Servidor; `use-ip` lo activa
+  con la interfaz elegida y `PUT /servers/{id}` acepta `public_url_auto`.
+
 ### Registro de actividad (solo admin)
 Objeto **Log**: `{"id","admin_id","admin_username","action","entity","entity_id","details","created_at"}`
 - `GET /logs?page=&limit=`

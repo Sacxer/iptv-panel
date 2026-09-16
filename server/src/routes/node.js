@@ -84,7 +84,9 @@ chgrp iptvnode /etc/iptv-node.env
 cat > /etc/systemd/system/iptv-node.service <<UNIT
 [Unit]
 Description=Nodo de streaming IPTV
+Wants=network-online.target
 After=network-online.target
+StartLimitIntervalSec=0
 
 [Service]
 User=iptvnode

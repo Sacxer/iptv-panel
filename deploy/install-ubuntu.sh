@@ -321,7 +321,11 @@ step "Servicio del portal"
 cat > /etc/systemd/system/iptv-portal.service <<UNIT
 [Unit]
 Description=Portal IPTV
-After=network.target
+# Arranca solo al encender el servidor (p. ej. tras un corte de luz), cuando la red ya está lista.
+Wants=network-online.target
+After=network-online.target
+# Nunca deja de reintentar, aunque falle varias veces seguidas.
+StartLimitIntervalSec=0
 
 [Service]
 User=$APP_USER
