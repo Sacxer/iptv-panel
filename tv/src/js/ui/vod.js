@@ -179,7 +179,8 @@
     var img = info.image || info.cover || item.logo;
     el.querySelector('.detail-poster .poster-ph').textContent = U.initials(item.name);
     U.setImg(el.querySelector('.detail-poster img'), img);
-    U.setImg(el.querySelector('.detail-backdrop img'), img);
+    /* Fondo: la imagen horizontal si el servidor la envía; si no, el póster */
+    U.setImg(el.querySelector('.detail-backdrop img'), info.backdrop || img);
   };
 
   screens.vodDetail = {

@@ -51,7 +51,7 @@
       this.item = item;
       this.data = null;
       this.seasonIndex = 0;
-      UI.fillDetail(this.el, item, { plot: item.plot, genre: item.genre, rating: item.rating, year: item.year, cast: item.cast, director: item.director });
+      UI.fillDetail(this.el, item, { plot: item.plot, genre: item.genre, rating: item.rating, year: item.year, cast: item.cast, director: item.director, backdrop: item.backdrop });
       U.empty(this.seasonsEl);
       this.episodes.setItems([]);
       this.status.textContent = 'Cargando temporadas…';

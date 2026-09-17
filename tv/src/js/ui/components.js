@@ -231,6 +231,11 @@
   VGrid.prototype.visibleRows = function () {
     return Math.max(1, Math.floor((this.c.clientHeight || 800) / this.ch));
   };
+  /* Fila siguiente asomada si cabe al menos un cuarto de celda (se recorta; anuncia que hay más) */
+  VGrid.prototype.partialRows = function () {
+    var hh = this.c.clientHeight || 800;
+    return hh >= this.ch && hh % this.ch >= this.ch / 4 ? 1 : 0;
+  };
   VGrid.prototype.hasFocus = VList.prototype.hasFocus;
   VGrid.prototype.setEmptyText = VList.prototype.setEmptyText;
   VGrid.prototype.current = VList.prototype.current;
@@ -252,7 +257,7 @@
     if (row < this.topRow) { this.topRow = row; }
     if (row >= this.topRow + vr) { this.topRow = row - vr + 1; }
     this.topRow = U.clamp(this.topRow, 0, Math.max(0, rows - vr));
-    need = vr * cols;
+    need = (vr + this.partialRows()) * cols;
 
     while (this.cells.length < need) {
       cell = h('div', { className: 'vcell focusable' });

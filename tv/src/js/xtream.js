@@ -37,6 +37,15 @@
 
   function str(v) { return (v === null || v === undefined) ? '' : String(v); }
 
+  /* backdrop_path: arreglo de URLs (XtreamUI) o una sola URL → la primera */
+  function firstUrl(v) {
+    if (U.isArray(v)) {
+      for (var i = 0; i < v.length; i++) { if (v[i]) { return str(v[i]); } }
+      return '';
+    }
+    return str(v);
+  }
+
   function catOf(o) {
     if (o.category_id !== undefined && o.category_id !== null && o.category_id !== '') { return String(o.category_id); }
     if (U.isArray(o.category_ids) && o.category_ids.length) { return String(o.category_ids[0]); }
@@ -146,7 +155,8 @@
         cast: str(s.cast),
         director: str(s.director),
         rating: str(s.rating),
-        year: str(s.releaseDate || s.release_date)
+        year: str(s.releaseDate || s.release_date),
+        backdrop: firstUrl(s.backdrop_path)
       });
     });
     return out;
@@ -166,6 +176,7 @@
       cast: str(info.cast || info.actors),
       director: str(info.director),
       image: str(info.movie_image || info.cover_big || (item && item.logo)),
+      backdrop: firstUrl(info.backdrop_path),
       ext: str(md.container_extension) || (item && item.ext) || 'mp4'
     };
   };
@@ -182,7 +193,8 @@
       director: str(info.director),
       rating: str(info.rating) || (series && series.rating) || '',
       year: str(info.releaseDate || info.release_date) || (series && series.year) || '',
-      cover: str(info.cover) || (series && series.logo) || ''
+      cover: str(info.cover) || (series && series.logo) || '',
+      backdrop: firstUrl(info.backdrop_path) || (series && series.backdrop) || ''
     };
     var eps = data.episodes || {};
     var seasonNames = {};

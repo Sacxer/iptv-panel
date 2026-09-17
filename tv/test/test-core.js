@@ -64,6 +64,11 @@ test('xtream: interpreta la autenticación y normaliza listas', () => {
   assert.equal(info.seasons.length, 1);
   assert.deepEqual(info.seasons[0].episodes.map((e) => e.id), ['1', '2'], 'episodios ordenados; acepta episodes como arreglo');
   assert.equal(info.info.cover, 'l');
+  assert.equal(info.info.backdrop, '');
+  assert.equal(X.normSeriesInfo({ info: { backdrop_path: ['', 'http://s/b.jpg'] } }).info.backdrop, 'http://s/b.jpg');
+  assert.equal(X.normSeries([{ series_id: 1, backdrop_path: ['http://s/f.jpg'] }])[0].backdrop, 'http://s/f.jpg');
+  assert.equal(X.normVodInfo({ info: { backdrop_path: 'http://s/v.jpg', movie_image: 'http://s/p.jpg' } }).backdrop, 'http://s/v.jpg');
+  assert.equal(X.normVodInfo({ info: [] }, { logo: 'p' }).backdrop, '');
   const epg = X.normEpg({ epg_listings: [{ title: 'Tm90aWNpYXM=', description: '', start_timestamp: '200', stop_timestamp: '300' }, { title: 'QQ==', start: '1970-01-01 00:01:40', end: '1970-01-01 00:03:20' }] });
   assert.deepEqual(epg.map((e) => [e.title, e.start, e.end]), [['A', 100, 200], ['Noticias', 200, 300]]);
 });

@@ -26,16 +26,18 @@ const BANNER_SRC = path.join(RES, 'drawable-xhdpi', 'banner.png');
 const TARGETS = {
   icons: [
     { file: 'tizen/icon.png', w: 117, h: 117, kind: 'icon', note: 'Tizen config.xml <icon> (tamaño de las plantillas de Tizen Studio)' },
-    { file: 'webos/icon.png', w: 80, h: 80, kind: 'icon', note: 'webOS appinfo.json icon (80x80)' },
-    { file: 'webos/largeIcon.png', w: 130, h: 130, kind: 'icon', note: 'webOS appinfo.json largeIcon (130x130)' },
+    /* LG: cuadrado, sin esquinas redondeadas y sin transparencia (lista de verificación de LG, «Icon») */
+    { file: 'webos/icon.png', w: 80, h: 80, kind: 'square', alpha: false, note: 'webOS appinfo.json icon (80x80, cuadrado y opaco)' },
+    { file: 'webos/largeIcon.png', w: 130, h: 130, kind: 'square', alpha: false, note: 'webOS appinfo.json largeIcon (130x130, cuadrado y opaco)' },
     { file: 'webos/splash.png', w: 1920, h: 1080, kind: 'splash', note: 'webOS appinfo.json splashBackground (1920x1080)' },
   ],
   store: [
     { file: 'samsung/icon-512x423.png', w: 512, h: 423, kind: 'tile', alpha: false, note: 'Samsung Seller Office: icono 512x423, PNG 24 bits, < 300 KB' },
     { file: 'samsung/logo-1920x1080.png', w: 1920, h: 1080, kind: 'logo', note: 'Samsung Seller Office: logotipo 1920x1080, PNG 32 bits transparente, < 300 KB' },
     { file: 'samsung/background-1920x1080.png', w: 1920, h: 1080, kind: 'background', alpha: false, note: 'Samsung Seller Office: fondo 1920x1080, PNG 24 bits, < 300 KB' },
-    { file: 'lg/icon-400x400.png', w: 400, h: 400, kind: 'icon', note: 'LG Seller Lounge: icono 400x400' },
-    { file: 'lg/background-1920x1080.png', w: 1920, h: 1080, kind: 'splash', alpha: false, note: 'LG Seller Lounge: imagen de fondo 1920x1080' },
+    { file: 'lg/icon-400x400.png', w: 400, h: 400, kind: 'square', alpha: false, note: 'LG Seller Lounge: icono 400x400 (cuadrado y opaco)' },
+    /* Con letra normal: npm run shots -- --art (aquí solo se crea si no existe) */
+    { file: 'lg/background-1920x1080.png', w: 1920, h: 1080, kind: 'splash', alpha: false, keep: true, note: 'LG Seller Lounge: imagen de fondo 1920x1080' },
   ],
 };
 
@@ -114,6 +116,17 @@ function renderIcon(src, m, w, h) {
   return out;
 }
 
+/* Icono cuadrado a sangre (LG): degradado vertical y logotipo centrado, sin esquinas ni transparencia */
+function renderSquare(m, w, h) {
+  const out = png.createImage(w, h);
+  draw.gradient(out, m.top, m.bottom, 'vertical');
+  const size = Math.min(w, h);
+  const unit = m.glyph.unitRatio * size;
+  const [bx0, by0, bx1, by1] = draw.GLYPH_BOUNDS;
+  draw.drawGlyph(out, (w - (bx0 + bx1) * unit) / 2, (h - (by0 + by1) * unit) / 2, unit);
+  return out;
+}
+
 function textBlock(img, name, centerX, top, maxWidth, cell, color) {
   let c = cell;
   while (c > 2 && draw.textWidth(name, c) > maxWidth) c -= 1;
@@ -125,6 +138,7 @@ function textBlock(img, name, centerX, top, maxWidth, cell, color) {
 function render(target, src, m, banner, name) {
   const { w, h, kind } = target;
   if (kind === 'icon') return renderIcon(src, m, w, h);
+  if (kind === 'square') return renderSquare(m, w, h);
 
   const bg = png.createImage(w, h);
   if (kind === 'background' || kind === 'splash' || kind === 'tile') {
@@ -177,10 +191,14 @@ function main() {
   const groups = [['icons', path.join(TV_DIR, 'assets', 'icons')], ['store', path.join(TV_DIR, 'assets', 'store')]];
   for (const [group, dir] of groups) {
     for (const t of TARGETS[group]) {
+      const file = path.join(dir, t.file);
+      if (t.keep && fs.existsSync(file) && args.indexOf('--force') < 0) {
+        console.log(`${path.relative(TV_DIR, file).padEnd(44)} (se conserva; --force para redibujarla)`);
+        continue;
+      }
       const img = render(t, src, m, banner, name);
       const alpha = t.alpha !== false;
       const buf = png.encode(alpha ? img : png.flatten(img, [11, 15, 23]), { alpha });
-      const file = path.join(dir, t.file);
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, buf);
       const kb = (buf.length / 1024).toFixed(0);

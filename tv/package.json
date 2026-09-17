@@ -12,12 +12,16 @@
     "build:all": "node scripts/build.js --all",
     "build:usb": "node scripts/build.js --usb",
     "icons": "node scripts/make-icons.js",
+    "shots": "node scripts/store-shots.js",
+    "ux-doc": "node scripts/ux-doc.js",
+    "lg-checklist": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/lg-checklist.ps1",
     "check": "node scripts/check-es5.js",
     "test": "node test/test-m3u.js && node test/test-core.js",
     "test-media": "node test/fixtures/make-test-media.js",
     "demo-source": "node test/fixtures/demo-source.js"
   },
   "devDependencies": {
+    "@webos-tools/cli": "^3.2.6",
     "acorn": "^8.14.0"
   }
 }

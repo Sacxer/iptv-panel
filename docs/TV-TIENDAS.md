@@ -237,6 +237,18 @@ Apps alojadas en un servidor (*hosted*) no están permitidas salvo excepciones: 
 | Sin contraseñas ni claves en el código | Sí (el usuario escribe sus datos; `operator.json` no lleva secretos) |
 | `appinfo.json`: id, versión, tipo web, icono 80x80, icono grande 130x130 | Sí (`disableBackHistoryAPI: true`, `handlesRelaunch: true`) |
 
+Otros puntos de la lista oficial de LG (`self_evaluation_checklist_5.0.xlsx`, hoja «Other Check Points»):
+
+- **Icono cuadrado, sin esquinas redondeadas y sin fondo transparente** (si no, rechazo). `npm run icons` ya los
+  genera así.
+- **Contenido pagado**: aunque no se pague dentro de la app, un servicio que se contrata fuera cuenta como
+  contenido pagado: en Seller Lounge marque **Subscription** y explíquelo en el documento de uso (lo hace
+  `npm run ux-doc`).
+- **Cuentas de prueba**: si cada cuenta solo sirve en un equipo, LG pide al menos 20; con el límite de pantallas
+  simultáneas del portal basta con 1 a 5 cuentas con 3 pantallas o más.
+- Documentos: `npm run ux-doc` (UX scenario en PDF) y `npm run lg-checklist` (lista de verificación); ver
+  `tv/README.md`.
+
 Canal +/− no llega a las apps en webOS: la app también usa arriba/abajo en el reproductor.
 LG tiene documentos contradictorios sobre Atrás en webOS 23–25 (ventana de salida o pantalla de inicio); si el
 revisor pide otro comportamiento, se ajusta en `App.backFromHome` (`tv/src/js/app.js`). Conviene preguntar por

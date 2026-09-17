@@ -178,9 +178,31 @@ queden nítidos, con el nombre `appName` en letras de puntos.
 - **LG**: 1 principal y al menos 2 secundarias (máximo 5), **1920x1080 o 1280x720**, JPG o PNG, hasta 20 MB
   (guía de Seller Lounge v11.5).
 
-Cómo tomarlas: `npm run serve`, abra `http://127.0.0.1:8095/store/` en Chrome, DevTools (F12) → modo
-dispositivo → tamaño 1920x1080 → menú ⋮ → «Capture screenshot» (PNG; conviértalo a JPG para Samsung).
-Sugerencia: TV en vivo con vista previa, reproductor a pantalla completa, detalle de película y Cuenta.
+Cómo tomarlas: `npm run shots` abre la app en Edge o Chrome sin ventana a 1920x1080, inicia sesión y guarda en
+`assets/store/screenshots/` las capturas de tienda (PNG para LG y JPG de hasta 500 KB para Samsung: TV en vivo,
+reproductor, películas, detalle de película y serie) y las pantallas extra del documento de LG (`ux-*.png`).
+Use una cuenta que solo vea contenido propio o de prueba:
+
+```
+node scripts/serve.js --port 8094 --server-urls http://PORTAL:PUERTO_CLIENTES
+npm run shots -- --url http://127.0.0.1:8094/store/ --user USUARIO --pass CLAVE --scene --movie "Título" --series "Título"
+```
+
+`--scene` tapa el vídeo de prueba con una imagen ilustrativa. `npm run shots -- --art` dibuja con letra normal el
+fondo de LG (`assets/store/lg/background-1920x1080.png`; `npm run icons` ya no lo sobrescribe salvo con `--force`).
+Con el televisor en modo desarrollador también se pueden tomar del LG real: `ares-device --capture-screen`.
+
+**LG**: los iconos (`webos/icon.png`, `webos/largeIcon.png` y `lg/icon-400x400.png`) son cuadrados, sin esquinas
+redondeadas y sin transparencia: la lista de verificación de LG rechaza los redondeados o transparentes.
+
+**Documentos para la revisión de LG**:
+
+- `npm run ux-doc -- --test-user U --test-pass P --tested-on "LG 43UR7800 (webOS 23)"` → `dist/lg-ux-scenario.pdf`,
+  el documento de uso (UX scenario) en inglés con la estructura de la plantilla de LG 4.3. Lo que falte sale en rojo.
+- `npm run lg-checklist` (Windows con Excel) llena la lista de verificación oficial de LG
+  (`dist/lg/self_evaluation_checklist_5.0.xlsx`, del ZIP «App Self Checklist» de LG) con las respuestas de
+  `assets/store/lg/checklist.json` → `dist/lg/self_evaluation_checklist_PTOVS.xlsx`. Las pruebas que dependen del
+  televisor quedan vacías hasta ejecutar `npm run lg-checklist -- -Probado` tras probar en un LG real.
 
 ## Instalar en un televisor Samsung (modo desarrollador)
 

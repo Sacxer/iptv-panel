@@ -14,7 +14,7 @@
  *
  * Si están instaladas las herramientas de línea de comandos, además crea el paquete:
  *   Samsung: tizen package -t wgt -s PERFIL → dist/*.wgt   (Tizen Studio + extensión TV + certificado Samsung)
- *   LG:      ares-package → dist/*.ipk                     (webOS TV CLI: npm i -g @webos-tools/cli)
+ *   LG:      ares-package → dist/*.ipk                     (webOS TV CLI: npm install la deja en node_modules)
  * Este script no instala nada: si faltan, explica cómo instalarlas.
  */
 const fs = require('fs');
@@ -162,6 +162,9 @@ const CSP = [
 ].join('; ');
 
 function which(cmd) {
+  // Primero la copia del proyecto (npm install instala la CLI de webOS en node_modules/.bin)
+  const local = path.join(cfg.TV_DIR, 'node_modules', '.bin', process.platform === 'win32' ? `${cmd}.cmd` : cmd);
+  if (fs.existsSync(local)) return local;
   const r = spawnSync(process.platform === 'win32' ? 'where' : 'which', [cmd], { encoding: 'utf8' });
   if (r.status === 0) return r.stdout.split(/\r?\n/).filter(Boolean)[0];
   return null;
@@ -308,8 +311,8 @@ const HELP = {
   (o ponga el perfil en operator.json → tizen.certificateProfile). Ver tv/README.md.`,
   profile: `  Tizen Studio está instalado pero falta el perfil de certificado. Créelo en Tools → Certificate Manager
   y ejecute:  npm run build tizen -- --profile NOMBRE_DEL_PERFIL`,
-  ares: `  Para crear el .ipk instale la CLI de webOS TV:  npm install -g @webos-tools/cli
-  (https://webostv.developer.lge.com/develop/tools/cli-installation) y vuelva a ejecutar npm run build webos.
+  ares: `  Para crear el .ipk instale la CLI de webOS TV: en la carpeta tv ejecute  npm install
+  (queda en node_modules; ver https://webostv.developer.lge.com/develop/tools/cli-installation) y vuelva a ejecutar npm run build webos.
   También puede empaquetar a mano:  ares-package dist/webos-store -o dist   (o dist/webos-full)`,
 };
 
