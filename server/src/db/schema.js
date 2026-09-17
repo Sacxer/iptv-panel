@@ -644,6 +644,26 @@ const migrations = {
       });
     },
   },
+
+  '013_default_transcode_profiles': {
+    // Perfiles de fábrica para que el nodo de este servidor transcodifique sin configurar nada.
+    // Solo si no hay ninguno (no se tocan los que el operador ya creó).
+    async up(knex) {
+      const [{ c }] = await knex('transcode_profiles').count({ c: '*' });
+      if (Number(c) > 0) return;
+      const t = Math.floor(Date.now() / 1000);
+      const base = {
+        hw: 'cpu', video_codec: 'h264', preset: 'veryfast', fps: null, gop: 50, deinterlace: true,
+        audio_codec: 'aac', audio_bitrate_kbps: 128, audio_channels: 2, extra_args: null, created_at: t, updated_at: t,
+      };
+      await knex('transcode_profiles').insert([
+        { ...base, name: 'Full HD 1080p (CPU)', resolution: '1080', video_bitrate_kbps: 4500, max_bitrate_kbps: 5400 },
+        { ...base, name: 'HD 720p (CPU)', resolution: '720', video_bitrate_kbps: 2500, max_bitrate_kbps: 3000 },
+        { ...base, name: 'SD 480p ahorro (CPU)', resolution: '480', video_bitrate_kbps: 1200, max_bitrate_kbps: 1500 },
+      ]);
+    },
+    async down() {},
+  },
 };
 
 export const migrationSource = {

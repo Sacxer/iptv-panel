@@ -37,6 +37,20 @@ describe('nodo de streaming en el mismo servidor', () => {
     assert.notEqual(recreated.row.token, first.row.token);
   });
 
+  test('un portal nuevo trae perfiles de transcodificación listos', async () => {
+    const profiles = (await ctx.api('GET', '/api/admin/transcode-profiles')).data;
+    const byName = Object.fromEntries(profiles.map((p) => [p.name, p]));
+    assert.deepEqual(Object.keys(byName).sort(), ['Full HD 1080p (CPU)', 'HD 720p (CPU)', 'SD 480p ahorro (CPU)']);
+    assert.equal(byName['HD 720p (CPU)'].resolution, '720');
+    assert.equal(byName['HD 720p (CPU)'].hw, 'cpu');
+    assert.equal(byName['SD 480p ahorro (CPU)'].video_bitrate_kbps, 1200);
+    const { buildFfmpegArgs } = await import('../../node/iptv-node.js');
+    const args = buildFfmpegArgs({ mode: 'transcode', profile: byName['HD 720p (CPU)'] }, 'http://fuente/canal.ts').join(' ');
+    assert.match(args, /-vf yadif=deint=interlaced,scale=-2:720/);
+    assert.match(args, /-c:v libx264 -preset veryfast -b:v 2500k -maxrate 3000k/);
+    assert.match(args, /-c:a aac -b:a 128k -ac 2/);
+  });
+
   test('el instalador lo instala por defecto y se puede omitir', () => {
     const installer = fs.readFileSync(new URL('../../deploy/install-ubuntu.sh', import.meta.url), 'utf8');
     assert.match(installer, /--sin-nodo\) LOCAL_NODE=0/);

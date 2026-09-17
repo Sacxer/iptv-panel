@@ -25,7 +25,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const VERSION = '1.1.0';
+export const VERSION = '1.1.1';
 
 for (const file of ['/etc/iptv-node.env', path.join(path.dirname(fileURLToPath(import.meta.url)), '.env')]) {
   try {
@@ -252,7 +252,12 @@ export function buildFfmpegArgs(stream, source, { hlsDir = null } = {}) {
     const height = /^\d+$/.test(String(p.resolution)) ? Number(p.resolution) : null;
     const filters = [];
     const hw = p.hw || 'cpu';
-    if (p.deinterlace) filters.push({ cpu: 'yadif', nvenc: 'yadif_cuda', qsv: 'vpp_qsv=deinterlace=2', vaapi: 'deinterlace_vaapi' }[hw]);
+    // deint=interlaced: solo desentrelaza los cuadros marcados como entrelazados (lo progresivo pasa igual)
+    if (p.deinterlace) {
+      filters.push({
+        cpu: 'yadif=deint=interlaced', nvenc: 'yadif_cuda=deint=interlaced', qsv: 'vpp_qsv=deinterlace=2', vaapi: 'deinterlace_vaapi',
+      }[hw]);
+    }
     if (height) {
       filters.push({
         cpu: `scale=-2:${height}`, nvenc: `scale_cuda=-2:${height}`, qsv: `scale_qsv=w=-1:h=${height}`, vaapi: `scale_vaapi=w=-2:h=${height}`,

@@ -201,12 +201,12 @@ describe('servidores de streaming y modos de entrega', () => {
     assert.equal(cfg.data.mode, 'transcode');
     const args = buildFfmpegArgs(cfg.data, cfg.data.sources[0]);
     assert.ok(args.includes('h264_nvenc'));
-    assert.ok(args.join(' ').includes('yadif_cuda,scale_cuda=-2:720'));
+    assert.ok(args.join(' ').includes('yadif_cuda=deint=interlaced,scale_cuda=-2:720'));
     assert.ok(args.includes('2500k'));
     const copy = buildFfmpegArgs({ mode: 'restream' }, 'http://x/y.ts');
     assert.ok(copy.includes('copy') && !copy.includes('-c:v'));
     assert.equal(copy.at(-1), 'pipe:1');
-    assert.equal((await api('GET', '/api/admin/transcode-profiles')).data[0].stream_count, 1);
+    assert.equal((await api('GET', '/api/admin/transcode-profiles')).data.find((p) => p.id === profile.data.id).stream_count, 1);
 
     const bulk = await api('POST', '/api/admin/streams/bulk', { ids: [tc.id], action: 'set_delivery', delivery_mode: 'direct' });
     assert.equal(bulk.data.affected, 1);

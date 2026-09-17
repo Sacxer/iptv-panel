@@ -83,6 +83,14 @@ puertos 80, 443, 25461 (clientes) y 25460/udp (búsqueda del servidor desde la a
 abrirlo también en el cortafuegos del proveedor (Clouding, AWS…) o en el router. Al actualizar, el nodo se actualiza
 con el portal. Para no instalarlo: `--sin-nodo`.
 
+El panel también trae **perfiles de transcodificación** listos (*Servidores → Perfiles de transcodificación*):
+«Full HD 1080p», «HD 720p» y «SD 480p ahorro» (H.264 por CPU, audio AAC estéreo, desentrelazado solo en cuadros
+entrelazados). Para usarlos: en el canal, *Entrega → Transcodificar* y elegir el perfil.
+
+**Servidor de pruebas para las tiendas de TV** (LG, Samsung): `sudo bash /opt/iptv-src/deploy/demo-revision.sh`
+carga películas abiertas de la Fundación Blender, 3 canales de demostración y dos cuentas de prueba (`lgqa1`,
+`lgqa2`). Solo en un servidor sin clientes reales.
+
 - **Actualizar** un servidor ya instalado: ejecutar la misma línea. Hace un backup, actualiza el programa y conserva
   datos, usuarios y ajustes (la base de datos se actualiza sola al arrancar).
 - **Olvidé la contraseña del panel**: `sudo bash /opt/iptv/install-ubuntu.sh --reset-admin`.
