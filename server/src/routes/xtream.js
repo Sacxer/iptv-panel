@@ -4,7 +4,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { db } from '../db/index.js';
 import {
-  activeConnectionCount, contentScope, findUserByCredentials, scopeSeries, scopeStreams, userStatus,
+  activeConnectionCount, contentScope, findUserByCredentials, scopeSeries, scopeStreams, sectionAllowed, userStatus,
 } from '../lib/access.js';
 import { streamInfo } from '../lib/serialize.js';
 import { getSettings } from '../lib/settings.js';
@@ -299,6 +299,19 @@ const actions = {
   },
 };
 
+/** Sección de cada acción: si el cliente no la tiene, la respuesta es vacía (como si no existiera). */
+const ACTION_SECTION = {
+  get_live_categories: 'live', get_live_streams: 'live', get_short_epg: 'live', get_simple_data_table: 'live',
+  get_vod_categories: 'movies', get_vod_streams: 'movies', get_vod_info: 'movies',
+  get_series_categories: 'series', get_series: 'series', get_series_info: 'series',
+};
+const EMPTY_ANSWER = {
+  get_short_epg: { epg_listings: [] },
+  get_simple_data_table: { epg_listings: [] },
+  get_vod_info: { info: [], movie_data: [] },
+  get_series_info: { seasons: [], info: [], episodes: [] },
+};
+
 router.all('/player_api.php', async (req, res) => {
   const p = params(req);
   const user = await findUserByCredentials(p.username, p.password);
@@ -308,8 +321,8 @@ router.all('/player_api.php', async (req, res) => {
 
   const handler = actions[p.action];
   if (!handler) return res.json([]);
-  if (userStatus(user) !== 'active') {
-    return res.json(p.action.startsWith('get_short_epg') || p.action === 'get_simple_data_table' ? { epg_listings: [] } : []);
+  if (userStatus(user) !== 'active' || !sectionAllowed(user, ACTION_SECTION[p.action])) {
+    return res.json(EMPTY_ANSWER[p.action] ?? []);
   }
   res.json(await handler(p, await contentScope(user)));
 });
@@ -333,9 +346,10 @@ router.get('/get.php', async (req, res) => {
   const creds = `${e(user.username)}/${e(user.password)}`;
   const catNames = new Map((await db('categories').select('id', 'name')).map((c) => [c.id, c.name]));
 
+  const live = sectionAllowed(user, 'live') ? await orderedByCategory(liveOrVodQuery('live', scope)) : [];
   // Dirección de la guía en la cabecera: TiviMate, OTT Navigator, Kodi, Perfect Player… la cargan solos.
   const settingsForEpg = await getSettings();
-  const hasGuide = fs.existsSync(GUIDE_FILE) || Boolean(settingsForEpg.epg_url);
+  const hasGuide = live.length > 0 && (fs.existsSync(GUIDE_FILE) || Boolean(settingsForEpg.epg_url));
   const epgUrl = `${base}/xmltv.php?username=${e(user.username)}&password=${e(user.password)}`;
   const lines = [plus && hasGuide ? `#EXTM3U url-tvg="${epgUrl}" x-tvg-url="${epgUrl}"` : '#EXTM3U'];
   const push = (name, url, { epg = '', logo = '', group = '' } = {}) => {
@@ -345,19 +359,20 @@ router.get('/get.php', async (req, res) => {
     lines.push(url);
   };
 
-  const live = await orderedByCategory(liveOrVodQuery('live', scope));
   for (const s of live) {
     push(s.name, `${base}/live/${creds}/${s.id}.${liveExt}`, {
       epg: s.epg_channel_id, logo: s.logo, group: catNames.get(s.category_id) || UNCATEGORIZED.name,
     });
   }
-  const movies = await orderedByCategory(liveOrVodQuery('movie', scope));
+  const movies = sectionAllowed(user, 'movies') ? await orderedByCategory(liveOrVodQuery('movie', scope)) : [];
   for (const s of movies) {
     push(s.name, `${base}/movie/${creds}/${s.id}.${s.container_extension || 'mp4'}`, {
       logo: s.logo || streamInfo(s).cover, group: catNames.get(s.category_id) || UNCATEGORIZED.name,
     });
   }
-  const seriesRows = await seriesQuery(scope).select('series.id', 'series.name', 'series.cover', 'series.category_id');
+  const seriesRows = sectionAllowed(user, 'series')
+    ? await seriesQuery(scope).select('series.id', 'series.name', 'series.cover', 'series.category_id')
+    : [];
   if (seriesRows.length) {
     const seriesMap = new Map(seriesRows.map((s) => [s.id, s]));
     const eps = await db('streams').where({ type: 'episode', enabled: true })
@@ -382,6 +397,10 @@ router.get('/xmltv.php', async (req, res) => {
   const p = params(req);
   const user = await findUserByCredentials(p.username, p.password);
   if (!user) return res.status(401).type('text/plain').send('Credenciales inválidas');
+  if (!sectionAllowed(user, 'live')) {
+    // Sin canales en su plan: una guía vacía (el cliente no ve que existen)
+    return res.type('application/xml; charset=utf-8').send('<?xml version="1.0" encoding="UTF-8"?>\n<tv></tv>\n');
+  }
   if (fs.existsSync(GUIDE_FILE)) {
     res.type('application/xml; charset=utf-8');
     res.setHeader('Cache-Control', 'public, max-age=900');

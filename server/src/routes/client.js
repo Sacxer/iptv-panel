@@ -2,7 +2,7 @@
 import { Router } from 'express';
 import { db } from '../db/index.js';
 import {
-  activeOutageFor, findUserByCredentials, userPackageIds, userStatus,
+  activeOutageFor, findUserByCredentials, sectionAllowed, userPackageIds, userSections, userStatus,
 } from '../lib/access.js';
 import { config } from '../config.js';
 import { getSettings } from '../lib/settings.js';
@@ -20,6 +20,12 @@ const router = Router();
 function credentials(req) {
   const src = { ...(req.body || {}), ...req.query };
   return { username: src.username, password: src.password };
+}
+
+async function clientContent(user, packageIds, settings) {
+  const scope = packageIds.length ? packageIds : settings.allow_all_without_package ? null : [];
+  const { sections, mode } = await userSections(user, scope);
+  return { sections, mode, start: sections.length === 1 && sections[0] === 'live' ? 'last_channel' : 'menu' };
 }
 
 async function authUser(req) {
@@ -113,6 +119,8 @@ router.get('/info', async (req, res) => {
     server_name: settings.server_name,
     // Identidad y direcciones del portal: la app las guarda para reconectarse si cambia la IP.
     server: await portalIdentity(req, { forApp: true }),
+    // Secciones que ve el cliente (las demás no existen para él). Solo canales: la app abre en el último canal.
+    content: await clientContent(user, packageIds, settings),
     user: {
       username: user.username,
       exp_date: user.exp_date ? Number(user.exp_date) : null,
@@ -168,7 +176,7 @@ router.post('/playing', async (req, res) => {
   const streamId = int(req.body?.stream_id, 0);
   if (!streamId) throw new HttpError(400, 'Falta stream_id');
   const stream = await db('streams').where({ id: streamId }).select('id', 'type').first();
-  if (!stream) throw new HttpError(404, 'Contenido no encontrado');
+  if (!stream || !sectionAllowed(user, stream.type)) throw new HttpError(404, 'Contenido no encontrado');
   const t = now();
   const ip = clientIp(req);
   const userAgent = String(req.get('x-device-id') || req.get('user-agent') || '').slice(0, 500);

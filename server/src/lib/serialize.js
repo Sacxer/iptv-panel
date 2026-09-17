@@ -1,5 +1,5 @@
 import { db } from '../db/index.js';
-import { userStatus } from './access.js';
+import { parseSections, userStatus } from './access.js';
 import { bool, int, now, parseJson } from './util.js';
 import { getSettings } from './settings.js';
 
@@ -65,6 +65,8 @@ export async function serializeUsers(rows) {
     source: u.source,
     xtream_id: intOrNull(u.xtream_id),
     package_ids: packages.get(u.id) || [],
+    // Vacío = automático (según sus paquetes)
+    content_sections: parseSections(u.content_sections) || [],
     active_connections: connMap.get(u.id) || 0,
     device_count: deviceMap.get(u.id) || 0,
     last_seen_at: intOrNull(u.last_seen_at),

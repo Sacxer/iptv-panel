@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { db, whereSearch, insertId, BATCH_SIZE } from '../../db/index.js';
+import { CONTENT_SECTIONS, parseSections } from '../../lib/access.js';
 import { isReseller } from '../../lib/auth.js';
 import { logAction } from '../../lib/log.js';
 import { serializeUser, serializeUsers } from '../../lib/serialize.js';
@@ -57,6 +58,18 @@ async function setUserPackages(trx, userId, packageIds) {
   }
 }
 
+/**
+ * Secciones que ve el cliente: arreglo con "live", "movies", "series". Vacío o null = automático (según paquetes).
+ */
+function contentSectionsValue(value) {
+  if (value === null || value === '') return null;
+  const list = Array.isArray(value) ? value : String(value).split(',');
+  const unknown = list.map((s) => String(s).trim()).filter((s) => s && !CONTENT_SECTIONS.includes(s));
+  if (unknown.length) throw new HttpError(400, `Sección desconocida: ${unknown.join(', ')} (usa live, movies o series)`);
+  const sections = parseSections(list);
+  return sections ? sections.join(',') : null;
+}
+
 /** Valida y normaliza los campos editables de un usuario. */
 async function userFields(req, body, { creating }) {
   const out = {};
@@ -98,6 +111,7 @@ async function userFields(req, body, { creating }) {
   }
   if (body.enabled !== undefined) out.enabled = bool(body.enabled);
   if (body.is_trial !== undefined) out.is_trial = bool(body.is_trial);
+  if (body.content_sections !== undefined) out.content_sections = contentSectionsValue(body.content_sections);
   if (body.owner_id !== undefined && !isReseller(req)) {
     const ownerId = int(body.owner_id);
     if (ownerId !== null && !(await db('admins').where({ id: ownerId }).first())) {
@@ -161,7 +175,8 @@ router.post('/', async (req, res) => {
 
 router.post('/bulk', async (req, res) => {
   const { action } = req.body || {};
-  oneOf(action, ['enable', 'disable', 'suspend', 'reactivate', 'delete', 'extend', 'set_packages'], 'action');
+  oneOf(action, ['enable', 'disable', 'suspend', 'reactivate', 'delete', 'extend', 'set_packages', 'set_content'], 'action');
+  const contentValue = action === 'set_content' ? contentSectionsValue(req.body.content_sections ?? null) : undefined;
   let skipped = 0;
   const idsQuery = visibleUsers(req).whereIn('id', idList(req.body.ids));
   if (['suspend', 'reactivate', 'enable', 'disable'].includes(action) && (await getSettings()).cut_mode === 'external') {
@@ -198,6 +213,7 @@ router.post('/bulk', async (req, res) => {
       if (action === 'set_packages') {
         for (const id of part) await setUserPackages(trx, id, req.body.package_ids);
       }
+      if (action === 'set_content') await q().update({ content_sections: contentValue, updated_at: t });
     }
   });
   await logAction(req.admin, `user.bulk.${action}`, 'user', null, { ids, reason: req.body.reason, skipped });

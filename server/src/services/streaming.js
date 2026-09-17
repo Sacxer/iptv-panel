@@ -3,7 +3,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { db, insertId } from '../db/index.js';
 import {
-  activeOutageFor, canAccessStream, clientIp, findUserByCredentials, userPackageIds, userStatus,
+  activeOutageFor, canAccessStream, clientIp, findUserByCredentials, sectionAllowed, userPackageIds, userStatus,
 } from '../lib/access.js';
 import { getSettings } from '../lib/settings.js';
 import { bool, now, parseJson } from '../lib/util.js';
@@ -64,6 +64,8 @@ export async function serveStream(req, res, { kind, username, password, streamId
 
   const stream = await db('streams').where({ id: streamId }).first();
   if (!stream || !bool(stream.enabled) || stream.type !== KIND_TYPE[kind]) return deny(res, 404, 'Contenido no encontrado');
+  // Sección que no está en su plan: la misma respuesta que si no existiera
+  if (!sectionAllowed(user, kind)) return deny(res, 404, 'Contenido no encontrado');
 
   const settings = await getSettings();
   const scope = packageIds.length ? packageIds : settings.allow_all_without_package ? null : [];

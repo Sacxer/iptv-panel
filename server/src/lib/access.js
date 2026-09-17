@@ -79,6 +79,51 @@ export async function canAccessStream(stream, packageIds) {
   return Boolean(row);
 }
 
+/* ------------------------- Secciones: canales, películas, series ------------------------- */
+
+export const CONTENT_SECTIONS = ['live', 'movies', 'series'];
+
+/** Tipo de stream (live | movie | episode) o de URL (live | movie | series) → sección. */
+export const sectionOf = (kind) => ({ live: 'live', movie: 'movies', movies: 'movies', episode: 'series', series: 'series' }[kind] || null);
+
+/**
+ * Secciones marcadas a mano en la ficha del cliente, en orden, o `null` (ninguna marcada = automático).
+ * Acepta un arreglo o el texto guardado ("live,movies").
+ */
+export function parseSections(value) {
+  if (value === null || value === undefined) return null;
+  const list = Array.isArray(value) ? value : String(value).split(',');
+  const set = new Set(list.map((s) => String(s).trim()));
+  const out = CONTENT_SECTIONS.filter((s) => set.has(s));
+  return out.length ? out : null;
+}
+
+/** ¿El cliente puede ver esta sección? Automático: sí (lo limitan sus paquetes); a mano: solo las marcadas. */
+export function sectionAllowed(user, kind) {
+  const manual = parseSections(user.content_sections);
+  return !manual || manual.includes(sectionOf(kind));
+}
+
+/**
+ * Secciones que ve el cliente. A mano: las marcadas. Automático: las que tienen contenido activo en sus
+ * paquetes (o en todo el portal si puede ver todo).
+ */
+export async function userSections(user, scope) {
+  const manual = parseSections(user.content_sections);
+  if (manual) return { sections: manual, mode: 'manual' };
+  const pkgs = scope === undefined ? await contentScope(user) : scope;
+  const hasStreams = async (type) => Boolean(await scopeStreams(
+    db('streams').where({ type, enabled: true }), pkgs,
+  ).first('id'));
+  const hasSeries = async () => Boolean(await scopeSeries(db('series').where({ enabled: true }), pkgs).first('id'));
+  const found = {
+    live: await hasStreams('live'),
+    movies: await hasStreams('movie'),
+    series: await hasSeries(),
+  };
+  return { sections: CONTENT_SECTIONS.filter((s) => found[s]), mode: 'auto' };
+}
+
 export async function activeConnectionCount(userId, timeoutSeconds) {
   const row = await db('connections')
     .where('user_id', userId)

@@ -664,6 +664,20 @@ const migrations = {
     },
     async down() {},
   },
+
+  '014_user_content_sections': {
+    // Qué secciones ve cada cliente: "live,movies,series" (marcadas a mano) o vacío = automático según sus paquetes.
+    async up(knex) {
+      await knex.schema.alterTable('users', (t) => {
+        t.string('content_sections', 32).nullable();
+      });
+    },
+    async down(knex) {
+      await knex.schema.alterTable('users', (t) => {
+        t.dropColumn('content_sections');
+      });
+    },
+  },
 };
 
 export const migrationSource = {

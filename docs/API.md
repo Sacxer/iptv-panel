@@ -149,6 +149,7 @@ Cabeceras que la app envía en todas las peticiones (además de `X-Device-*`): `
 {
   "portal": true,
   "server_name": "Mi IPTV",
+  "content": {"sections": ["live", "movies", "series"], "mode": "auto", "start": "menu"},
   "user": {
     "username": "juan", "exp_date": 1767225600, "max_connections": 1, "is_trial": false,
     "status": "active", "suspension_reason": null
@@ -169,6 +170,11 @@ Cabeceras que la app envía en todas las peticiones (además de `X-Device-*`): `
 ```
 
 - `status`: `active` | `expired` | `suspended` | `disabled`.
+- `content.sections`: secciones que ve el cliente, en ese orden (`live`, `movies`, `series`). La app muestra solo
+  esas: las demás no existen para él. `mode`: `manual` (marcadas en la ficha del cliente) o `auto` (las que tienen
+  contenido en sus paquetes, o en todo el portal si puede ver todo). `start`: `last_channel` cuando la única sección es
+  `live` (la app abre directo en el último canal visto, sin opción para cambiarlo); si no, `menu`. Un portal viejo no
+  envía `content`: la app muestra todo.
 - `outage` es `null` si no hay corte activo que afecte al usuario.
 - `level`: `info` | `warning` | `critical`. `display`: `banner` | `popup` | `ticker`.
 - Credenciales incorrectas → `401 {"error": "Credenciales inválidas"}`.
@@ -220,22 +226,27 @@ Objeto **Usuario**:
   "is_trial": false, "status": "active",
   "notes": "", "owner_id": 1, "owner_username": "admin",
   "source": "local", "xtream_id": null,
-  "package_ids": [1, 2], "active_connections": 0,
+  "package_ids": [1, 2], "content_sections": [], "active_connections": 0,
   "last_seen_at": null, "last_ip": null,
   "created_at": 1700000000, "updated_at": 1700000000
 }
 ```
 `status` calculado: `suspended` > `disabled` > `expired` > `active`. `source`: `local` | `xtreamui`.
+`content_sections`: secciones marcadas a mano (`live`, `movies`, `series`); `[]` = automático según sus paquetes.
+Con secciones marcadas, lo no incluido sale vacío en `player_api.php` (categorías, listas, info y EPG), no aparece
+en `get.php`, `xmltv.php` devuelve una guía vacía si no incluye `live`, y las URLs de reproducción y
+`/api/client/playing` responden `404 Contenido no encontrado` (igual que si no existiera).
 
 - `GET /users?search=&status=active|expired|suspended|disabled|expiring|trial&package_id=&source=&owner_id=&sort=created_at|exp_date|username&order=asc|desc&page=&limit=` → paginado
 - `POST /users` → Usuario. Cuerpo: `username?`, `password?` (si faltan y `random:true` se generan),
   `exp_date?` o `duration?: {"amount":1,"unit":"days|months"}` , `max_connections`, `is_trial`,
-  `package_ids`, `notes`, `full_name`, `email`, `phone`, `enabled`, `owner_id?` (solo admin)
+  `package_ids`, `content_sections` (`[]` = automático), `notes`, `full_name`, `email`, `phone`, `enabled`,
+  `owner_id?` (solo admin)
 - `GET /users/{id}` · `PUT /users/{id}` (mismos campos, parcial) · `DELETE /users/{id}`
 - `POST /users/{id}/suspend` `{"reason":"Falta de pago"}` → Usuario
 - `POST /users/{id}/reactivate` → Usuario
 - `POST /users/{id}/extend` `{"amount":1,"unit":"days|months"}` → Usuario (extiende desde max(ahora, exp_date))
-- `POST /users/bulk` `{"ids":[1,2],"action":"enable|disable|suspend|reactivate|delete|extend|set_packages","reason?","amount?","unit?","package_ids?"}` → `{"affected":2}`
+- `POST /users/bulk` `{"ids":[1,2],"action":"enable|disable|suspend|reactivate|delete|extend|set_packages|set_content","reason?","amount?","unit?","package_ids?","content_sections?"}` → `{"affected":2}`
 - `GET /users/{id}/connections` → lista de Conexión
 - `GET /users/{id}/m3u-url` → `{"m3u_url":"http://…/get.php?…","xtream":{"server":"http://host:port","username":"…","password":"…"}}`
 
