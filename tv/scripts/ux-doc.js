@@ -2,10 +2,11 @@
 /*
  * npm run ux-doc -- --test-user USUARIO --test-pass CLAVE [opciones]
  *
- * Crea dist/lg-ux-scenario.pdf: el documento de uso (UX Scenario) que LG Seller Lounge pide para la revisión,
- * con la estructura de la plantilla oficial de LG (v4.3) y las capturas de assets/store/screenshots
- * (npm run shots). Va en inglés, que es lo que leen los revisores de LG. Queda en dist/ (no se sube a GitHub)
- * porque lleva la cuenta de prueba.
+ * Crea el documento de las pantallas que piden las tiendas, con las capturas de assets/store/screenshots
+ * (npm run shots). Va en inglés, que es lo que leen los revisores. Queda en dist/ (no se sube a GitHub) porque
+ * lleva la cuenta de prueba.
+ *   --tienda lg       → dist/lg-ux-scenario.pdf (UX Scenario, estructura de la plantilla de LG 4.3). Por defecto.
+ *   --tienda samsung  → dist/samsung-app-ui-description.pdf (App UI Description de Samsung Seller Office).
  *
  * Opciones:
  *   --test-user / --test-pass   cuenta de prueba (se pueden repetir; sin --test-pass la clave va solo en Seller Lounge → Test Info)
@@ -41,9 +42,12 @@ function parseArgs(argv) {
     else if (a === '--out') o.out = path.resolve(next());
     else if (a === '--browser') o.browser = next();
     else if (a === '--preview') o.preview = path.resolve(next());
+    else if (a === '--tienda') o.store = next();
     else throw new Error(`Opción desconocida: ${a}`);
   }
   if (o.passes.length > o.users.length) throw new Error('Cada --test-pass necesita su --test-user');
+  o.store = (o.store || 'lg').toLowerCase();
+  if (!['lg', 'samsung'].includes(o.store)) throw new Error('--tienda debe ser lg o samsung');
   return o;
 }
 
@@ -57,6 +61,9 @@ function img(name) {
   return `data:image/png;base64,${fs.readFileSync(file).toString('base64')}`;
 }
 
+/** Marca del encabezado de cada página (la fija build(): «UX Scenario» o «App UI Description»). */
+let brandLabel = 'UX Scenario';
+
 /* Pantalla con recuadros numerados (coordenadas sobre 1920x1080) y tabla de descripción */
 function screenPage(section, title, shot, marks, details) {
   const boxes = marks.map((m, i) => {
@@ -66,7 +73,7 @@ function screenPage(section, title, shot, marks, details) {
   }).join('');
   const rows = marks.map((m, i) => `<tr><td class="n">${i + 1}</td><td>${m.text}</td></tr>`).join('');
   return `<section class="page">
-  <header><h1>${esc(section)}</h1><div class="brand">UX Scenario</div></header>
+  <header><h1>${esc(section)}</h1><div class="brand">${esc(brandLabel)}</div></header>
   <div class="screen-wrap">
     <div class="left"><h2>${esc(title)}</h2><div class="shot"><img src="${img(shot)}">${boxes}</div></div>
     <table class="desc"><thead><tr><th colspan="2">Description</th></tr></thead><tbody>${rows}</tbody></table>
@@ -76,6 +83,10 @@ function screenPage(section, title, shot, marks, details) {
 }
 
 function build(opts) {
+  const samsung = opts.store === 'samsung';
+  const docName = samsung ? 'App UI Description' : 'UX Scenario';
+  const storeName = samsung ? 'Samsung Apps TV' : 'LG Content Store';
+  brandLabel = docName;
   const op = cfg.loadOperator().data;
   const pkg = cfg.packageInfo();
   const ids = cfg.appIds(op, 'store');
@@ -102,22 +113,27 @@ function build(opts) {
 
   const basic = [
     ['App Information', 'App Title', esc(appName)],
-    ['', 'App ID / Version', `${esc(ids.webos)} · ${esc(pkg.version)}`],
+    ['', 'App ID / Version', `${esc(samsung ? ids.tizenId : ids.webos)} · ${esc(pkg.version)}`],
     ['', 'Seller', need(seller, 'seller name')],
-    ['', 'Category', 'Entertainment'],
-    ['', 'File Type', 'Web (packaged web app, .ipk; no hosted pages)'],
+    ['', 'Category', 'Entertainment (video)'],
+    ['', 'File Type', samsung ? 'Tizen web application (.wgt; no hosted pages)' : 'Web (packaged web app, .ipk; no hosted pages)'],
     ['', 'Optimized Resolution', '1920*1080 (16:9)'],
-    ['', 'Service Area Information', 'Colombia (CO)'],
+    ['', 'Service Area Information', samsung
+      ? 'Colombia (CO) — the service is for the subscribers of the operator in Colombia (the country list in Seller Office is limited until Partner Seller status is granted)'
+      : 'Colombia (CO)'],
     ['', 'App Service Language', 'Spanish'],
     ['', 'Geo-IP Block', 'No'],
-    ['', 'SDK Version', `webOS TV 4.0 or later (web app, ES5)${opts.testedOn ? `. Tested on: ${esc(opts.testedOn)}` : ''}`],
+    ['', samsung ? 'Required Version' : 'SDK Version',
+      samsung
+        ? `Tizen 2.3 or later (required_version in config.xml)${opts.testedOn ? `. Tested on: ${esc(opts.testedOn)}` : ''}`
+        : `webOS TV 4.0 or later (web app, ES5)${opts.testedOn ? `. Tested on: ${esc(opts.testedOn)}` : ''}`],
     ['', 'In-App Ad', 'Not Applicable'],
     ['', 'Paid Content', 'Subscription (contracted directly with the operator outside the app; there is no payment or sign-up inside the app)'],
     ['', 'Sound (For Game Type)', 'Not Applicable'],
     ['Test Information', 'Service URL (For Web Type)', 'Not Applicable (packaged app)'],
     ['', 'Test URL (For Web Type)', 'Not Applicable'],
     ['', 'Content server for QA', need(reviewUrl, 'public server address for QA')],
-    ['', 'Service Platform', 'webOS'],
+    ['', 'Service Platform', samsung ? 'Samsung Tizen' : 'webOS'],
   ].map(([cat, item, value]) => `<tr><td class="cat">${cat}</td><td class="item">${item}</td><td>${value}</td></tr>`).join('');
 
   const pages = [];
@@ -125,14 +141,14 @@ function build(opts) {
   pages.push(`<section class="page cover">
   <div class="cover-box">
     <div class="cover-title">${esc(appName)}</div>
-    <div class="cover-sub">UX Scenario Document</div>
-    <div class="cover-meta">Based on the LG Seller Lounge template (file version 4.3)<br>
-    App version ${esc(pkg.version)} · ${esc(ids.webos)} · ${today}</div>
+    <div class="cover-sub">${docName}</div>
+    <div class="cover-meta">${samsung ? `For Samsung TV Seller Office (${esc(storeName)})` : 'Based on the LG Seller Lounge template (file version 4.3)'}<br>
+    App version ${esc(pkg.version)} · ${esc(samsung ? ids.tizenId : ids.webos)} · ${today}</div>
   </div>
 </section>`);
 
   pages.push(`<section class="page">
-  <header><h1>Table of Contents</h1><div class="brand">UX Scenario</div></header>
+  <header><h1>Table of Contents</h1><div class="brand">${esc(brandLabel)}</div></header>
   <ol class="toc">
     <li>Basic Information</li><li>Document History</li><li>App Overview and Screen Flow</li>
     <li>Detailed Login Information</li><li>Main Page Description</li><li>Sub Page Description</li>
@@ -142,18 +158,18 @@ function build(opts) {
 </section>`);
 
   pages.push(`<section class="page">
-  <header><h1>1. Basic Information</h1><div class="brand">UX Scenario</div></header>
+  <header><h1>1. Basic Information</h1><div class="brand">${esc(brandLabel)}</div></header>
   <table class="grid basic"><thead><tr><th>Category</th><th>Items</th><th>Input (By Developer)</th></tr></thead><tbody>${basic}</tbody></table>
 </section>`);
 
   pages.push(`<section class="page">
-  <header><h1>2. Document History</h1><div class="brand">UX Scenario</div></header>
+  <header><h1>2. Document History</h1><div class="brand">${esc(brandLabel)}</div></header>
   <table class="grid"><thead><tr><th>Version</th><th>Date</th><th>App version</th><th>Description</th></tr></thead>
-  <tbody><tr><td>1.0</td><td>${today}</td><td>${esc(pkg.version)}</td><td>Initial submission to LG Content Store.</td></tr></tbody></table>
+  <tbody><tr><td>1.0</td><td>${today}</td><td>${esc(pkg.version)}</td><td>Initial submission to ${esc(storeName)}.</td></tr></tbody></table>
 </section>`);
 
   pages.push(`<section class="page">
-  <header><h1>3. App Overview and Screen Flow</h1><div class="brand">UX Scenario</div></header>
+  <header><h1>3. App Overview and Screen Flow</h1><div class="brand">${esc(brandLabel)}</div></header>
   <p>${esc(appName)} is the official TV app of ${seller ? esc(seller) : 'the operator'}, an Internet and TV service provider in Colombia.
   Subscribers sign in with the username and password they receive from the operator and watch the operator's live TV channels,
   movies and series, delivered by the operator's own servers. The app does not include any content, playlists or
@@ -171,12 +187,13 @@ function build(opts) {
       <div class="node">Live TV channel → Preview → Full-screen player</div>
     </div>
   </div>
-  <p class="note">Back always returns to the previous screen. Back on the main screen asks for exit confirmation
-  (on webOS 23 and later it returns to the TV Home screen as required by the LG back-button guideline).</p>
+  <p class="note">Back always returns to the previous screen. Back on the main screen asks for exit confirmation${samsung
+    ? ' (Return key; the app then closes with tizen.application.getCurrentApplication().exit()).'
+    : ' (on webOS 23 and later it returns to the TV Home screen as required by the LG back-button guideline).'}</p>
 </section>`);
 
   pages.push(`<section class="page">
-  <header><h1>4. Detailed Login Information</h1><div class="brand">UX Scenario</div></header>
+  <header><h1>4. Detailed Login Information</h1><div class="brand">${esc(brandLabel)}</div></header>
   <table class="grid"><thead><tr><th>#</th><th>Username</th><th>Password</th><th>Simultaneous screens</th></tr></thead><tbody>${accounts}</tbody></table>
   <ul>
     <li>No activation code is needed. Each account can be used on several TVs at the same time, up to the number of simultaneous screens shown above (only while playing video).</li>
@@ -197,7 +214,7 @@ function build(opts) {
     { box: [405, 738, 592, 822], text: `${es('Ingresar')} Sign in. Wrong credentials show an error message; an expired or suspended account shows a notice.` },
     { box: [598, 738, 791, 822], text: `${es('Cancelar')} Cancel: returns to the previous screen (on the first launch it behaves like Back).` },
   ], `<p>Shown on the first launch and after signing out. Navigation: Up/Down between fields, OK to edit, Back to leave.
-  The Magic Remote pointer can select every element.</p>`));
+  ${samsung ? 'Every element can also be selected with the remote arrows and OK.' : 'The Magic Remote pointer can select every element.'}</p>`));
 
   pages.push(screenPage('5. Main Page Description', '2. Main Page (Live TV)', '1-tv-en-vivo', [
     { box: [12, 110, 306, 758], text: `Main menu: ${es('TV en vivo')} Live TV, ${es('Películas')} Movies, ${es('Series')}, ${es('Favoritos')} Favorites, ${es('Recientes')} Recently watched, ${es('Buscar')} Search, ${es('Mensajes')} Messages (badge = unread), ${es('Cuenta')} Account.` },
@@ -209,10 +226,10 @@ function build(opts) {
     { box: [1270, 22, 1884, 84], text: 'Operator name, date and time.' },
     { box: [356, 1026, 1134, 1074], text: 'Key hints for the current screen (OK, Red, CH+/CH-).' },
   ], `<p>This is the first screen after signing in. Left from the lists moves the focus to the main menu.
-  Back from the lists moves to the menu; Back on the menu asks for exit confirmation (webOS 22 and earlier) or returns to the TV Home (webOS 23 and later).</p>`));
+  Back from the lists moves to the menu; Back on the menu asks for exit confirmation${samsung ? '.' : ' (webOS 22 and earlier) or returns to the TV Home (webOS 23 and later).'}</p>`));
 
   pages.push(`<section class="page">
-  <header><h1>6. Sub Page Description</h1><div class="brand">UX Scenario</div></header>
+  <header><h1>6. Sub Page Description</h1><div class="brand">${esc(brandLabel)}</div></header>
   <h2>1. Flow Chart</h2>
   <table class="grid"><thead><tr><th>From</th><th>Action</th><th>To</th><th>Back returns to</th></tr></thead><tbody>
     <tr><td>Live TV list</td><td>OK (twice)</td><td>Full-screen player</td><td>Live TV list</td></tr>
@@ -240,7 +257,7 @@ function build(opts) {
   pages.push(screenPage('6. Sub Page Description', '3. Movies', '3-peliculas', [
     { box: [12, 190, 306, 276], text: `${es('Películas')} menu item (selected).` },
     { box: [340, 230, 662, 604], text: 'Movie categories and favorites.' },
-    { box: [690, 232, 1890, 1024], text: 'Poster grid with rating. OK: details. Red: favorite. CH+/CH-: page. The Magic Remote wheel scrolls.' },
+    { box: [690, 232, 1890, 1024], text: `Poster grid with rating. OK: details. Red: favorite. CH+/CH-: page.${samsung ? '' : ' The Magic Remote wheel scrolls.'}` },
     { box: [1774, 186, 1890, 218], text: 'Number of movies in the category.' },
   ], `<p>The ${es('Series')} screen works the same way with series posters.</p>`));
 
@@ -286,11 +303,12 @@ function build(opts) {
     { box: [596, 378, 1324, 702], text: `${es('¿Desea salir de ...?')} Do you want to exit? Shown when pressing Back on the main menu or selecting ${es('Salir de la aplicación')}.` },
     { box: [652, 575, 789, 657], text: `${es('Salir')} Exit: closes the app.` },
     { box: [793, 575, 992, 657], text: `${es('Cancelar')} Cancel (default focus): returns to the app.` },
-  ], `<p>On webOS 23 and later, Back on the main menu returns to the TV Home screen (webOS.platformBack) without this dialog, following the LG back-button guideline.
-  The Home and Exit keys of the remote are handled by the TV. Playback stops when the app goes to the background and resumes when it returns.</p>`));
+  ], `<p>${samsung
+    ? 'The app registers only the keys it uses (tizen.tvinputdevice): color keys, media keys, channel keys, Info and numbers. The Exit and volume keys are left to the TV. On multitasking (Smart Hub / Home), live playback stops and video on demand is suspended and restored with AVPlay, so the user returns to the same point.'
+    : 'On webOS 23 and later, Back on the main menu returns to the TV Home screen (webOS.platformBack) without this dialog, following the LG back-button guideline. The Home and Exit keys of the remote are handled by the TV. Playback stops when the app goes to the background and resumes when it returns.'}</p>`));
 
   pages.push(`<section class="page">
-  <header><h1>7. Paid Content</h1><div class="brand">UX Scenario</div></header>
+  <header><h1>7. Paid Content</h1><div class="brand">${esc(brandLabel)}</div></header>
   <p><b>Type: Subscription, contracted outside the app.</b></p>
   <ul>
     <li>Customers contract the TV service directly with ${seller ? esc(seller) : 'the operator'} (together with their Internet service) and receive a username and password.</li>
@@ -303,12 +321,14 @@ function build(opts) {
 </section>`);
 
   pages.push(`<section class="page">
-  <header><h1>[Appendix] Remote Control Keys and Behavior</h1><div class="brand">UX Scenario</div></header>
+  <header><h1>[Appendix] Remote Control Keys and Behavior</h1><div class="brand">${esc(brandLabel)}</div></header>
   <table class="grid keys"><thead><tr><th>Key</th><th>Action</th></tr></thead><tbody>
     <tr><td>Arrows</td><td>Move the focus. Every selectable element shows a highlighted focus.</td></tr>
     <tr><td>OK</td><td>Select. On text fields: open the TV keyboard.</td></tr>
-    <tr><td>Back</td><td>Previous screen; on the main menu: exit confirmation (webOS 22 and earlier) or TV Home (webOS 23 and later).</td></tr>
-    <tr><td>Magic Remote pointer / wheel</td><td>Pointing focuses an element, click = OK; the wheel scrolls lists and grids.</td></tr>
+    <tr><td>${samsung ? 'Return' : 'Back'}</td><td>Previous screen; on the main menu: exit confirmation${samsung ? ' and the app closes.' : ' (webOS 22 and earlier) or TV Home (webOS 23 and later).'}</td></tr>
+    ${samsung
+      ? '<tr><td>Smart Remote pointer</td><td>Pointing focuses an element and click works as OK (when the remote has a pointer).</td></tr>'
+      : '<tr><td>Magic Remote pointer / wheel</td><td>Pointing focuses an element, click = OK; the wheel scrolls lists and grids.</td></tr>'}
     <tr><td>Red</td><td>Add/remove favorite.</td></tr>
     <tr><td>Green</td><td>Refresh (Messages).</td></tr>
     <tr><td>CH+ / CH-</td><td>Next/previous page in lists; next/previous channel in the player.</td></tr>
@@ -375,7 +395,8 @@ function build(opts) {
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   const { html, missing, appName } = build(opts);
-  const out = opts.out || path.join(TV_DIR, 'dist', 'lg-ux-scenario.pdf');
+  const name = opts.store === 'samsung' ? 'samsung-app-ui-description.pdf' : 'lg-ux-scenario.pdf';
+  const out = opts.out || path.join(TV_DIR, 'dist', name);
   fs.mkdirSync(path.dirname(out), { recursive: true });
   const tmp = path.join(os.tmpdir(), `lg-ux-${process.pid}.html`);
   fs.writeFileSync(tmp, html);
@@ -401,7 +422,7 @@ async function main() {
   } finally {
     fs.rmSync(tmp, { force: true });
   }
-  console.log(`Documento de uso de ${appName} para LG: ${path.relative(process.cwd(), out)} (${Math.round(fs.statSync(out).size / 1024)} KB)`);
+  console.log(`Documento de ${appName} para ${opts.store === 'samsung' ? 'Samsung' : 'LG'}: ${path.relative(process.cwd(), out)} (${Math.round(fs.statSync(out).size / 1024)} KB)`);
   if (missing.length) console.log(`Faltan datos (salen en rojo como PENDING): ${[...new Set(missing)].join(', ')}`);
 }
 

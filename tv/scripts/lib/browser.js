@@ -90,7 +90,10 @@ async function withBrowser(fn, { browser, width = 1920, height = 1080 } = {}) {
     if (client) client.close();
     child.kill();
     await sleep(500);
-    fs.rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    // Windows puede tener el perfil temporal bloqueado un momento más: no vale la pena fallar por eso
+    try {
+      fs.rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 400 });
+    } catch { /* lo borra el sistema con los temporales */ }
   }
 }
 
