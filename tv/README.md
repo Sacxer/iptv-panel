@@ -193,7 +193,8 @@ fondo de LG (`assets/store/lg/background-1920x1080.png`; `npm run icons` ya no l
 Con el televisor en modo desarrollador también se pueden tomar del LG real: `ares-device --capture-screen`.
 
 **LG**: los iconos (`webos/icon.png`, `webos/largeIcon.png` y `lg/icon-400x400.png`) son cuadrados, sin esquinas
-redondeadas y sin transparencia: la lista de verificación de LG rechaza los redondeados o transparentes.
+redondeadas, sin transparencia y con fondo liso del color del mosaico (`operator.json` → `webos.iconColor`): LG
+rechaza los redondeados, transparentes o con degradado.
 
 **Documentos para la revisión de LG**:
 

@@ -64,7 +64,7 @@
     "5": ["Pass", ""],
     "6": ["Pass", "Square icon."],
     "7": ["Pass", "Square corners (not rounded)."],
-    "8": ["Pass", "Opaque background."],
+    "8": ["Pass", "Opaque, solid background (no gradient), same color as the app tile (#2846aa)."],
     "9": ["Pass", "Screenshots show demo content only."],
     "10": ["Pass", ""],
     "11": ["Pass", ""],

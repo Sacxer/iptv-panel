@@ -239,7 +239,8 @@ Apps alojadas en un servidor (*hosted*) no están permitidas salvo excepciones: 
 
 Otros puntos de la lista oficial de LG (`self_evaluation_checklist_5.0.xlsx`, hoja «Other Check Points»):
 
-- **Icono cuadrado, sin esquinas redondeadas y sin fondo transparente** (si no, rechazo). `npm run icons` ya los
+- **Icono cuadrado, sin esquinas redondeadas, sin fondo transparente ni degradado, del mismo color que el mosaico**
+  (App Tile Color `#2846aa`; si no, rechazo). `npm run icons` ya los
   genera así.
 - **Contenido pagado**: aunque no se pague dentro de la app, un servicio que se contrata fuera cuenta como
   contenido pagado: en Seller Lounge marque **Subscription** y explíquelo en el documento de uso (lo hace

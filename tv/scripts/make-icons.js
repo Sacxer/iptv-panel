@@ -116,10 +116,13 @@ function renderIcon(src, m, w, h) {
   return out;
 }
 
-/* Icono cuadrado a sangre (LG): degradado vertical y logotipo centrado, sin esquinas ni transparencia */
-function renderSquare(m, w, h) {
+/*
+ * Icono cuadrado a sangre (LG): color liso y logotipo centrado, sin esquinas, transparencia ni degradado.
+ * LG pide que el fondo del icono sea del mismo color que el mosaico (operator.json → webos.iconColor).
+ */
+function renderSquare(m, w, h, tile) {
   const out = png.createImage(w, h);
-  draw.gradient(out, m.top, m.bottom, 'vertical');
+  draw.gradient(out, tile, tile, 'vertical');
   const size = Math.min(w, h);
   const unit = m.glyph.unitRatio * size;
   const [bx0, by0, bx1, by1] = draw.GLYPH_BOUNDS;
@@ -135,10 +138,10 @@ function textBlock(img, name, centerX, top, maxWidth, cell, color) {
   return c * 7;
 }
 
-function render(target, src, m, banner, name) {
+function render(target, src, m, banner, name, tile) {
   const { w, h, kind } = target;
   if (kind === 'icon') return renderIcon(src, m, w, h);
-  if (kind === 'square') return renderSquare(m, w, h);
+  if (kind === 'square') return renderSquare(m, w, h, tile || m.bottom);
 
   const bg = png.createImage(w, h);
   if (kind === 'background' || kind === 'splash' || kind === 'tile') {
@@ -175,8 +178,11 @@ function main() {
   const args = process.argv.slice(2);
   const opIndex = args.indexOf('--operator');
   let name = 'IPTV Player';
+  let tile = null;
   try {
-    name = loadOperator(opIndex >= 0 ? args[opIndex + 1] : null).data.appName || name;
+    const op = loadOperator(opIndex >= 0 ? args[opIndex + 1] : null).data;
+    name = op.appName || name;
+    if (op.webos && /^#[0-9a-f]{6}$/i.test(op.webos.iconColor || '')) tile = draw.hex(op.webos.iconColor);
   } catch (e) {
     console.warn(`Aviso: ${e.message} Se usa el nombre "${name}".`);
   }
@@ -196,7 +202,7 @@ function main() {
         console.log(`${path.relative(TV_DIR, file).padEnd(44)} (se conserva; --force para redibujarla)`);
         continue;
       }
-      const img = render(t, src, m, banner, name);
+      const img = render(t, src, m, banner, name, tile);
       const alpha = t.alpha !== false;
       const buf = png.encode(alpha ? img : png.flatten(img, [11, 15, 23]), { alpha });
       fs.mkdirSync(path.dirname(file), { recursive: true });
