@@ -77,6 +77,12 @@ Opciones: `| sudo bash -s -- --admin-user soporte --admin-pass 'MiClave123' --cl
 Instala Node.js, compila el panel, crea el servicio `iptv-portal`, configura Nginx (panel en el puerto 80) y abre los
 puertos 80, 443, 25461 (clientes) y 25460/udp (búsqueda del servidor desde la app).
 
+**El mismo servidor queda como nodo de streaming** (reenvío y transcodificación con FFmpeg): instala el servicio
+`iptv-node` en el puerto 8090 (o el siguiente libre), lo registra solo en *Servidores → Nodos de streaming* como
+«Este servidor» y lo conecta al portal por `127.0.0.1`. Los clientes reciben el video por ese puerto, así que hay que
+abrirlo también en el cortafuegos del proveedor (Clouding, AWS…) o en el router. Al actualizar, el nodo se actualiza
+con el portal. Para no instalarlo: `--sin-nodo`.
+
 - **Actualizar** un servidor ya instalado: ejecutar la misma línea. Hace un backup, actualiza el programa y conserva
   datos, usuarios y ajustes (la base de datos se actualiza sola al arrancar).
 - **Olvidé la contraseña del panel**: `sudo bash /opt/iptv/install-ubuntu.sh --reset-admin`.

@@ -15,6 +15,8 @@
 #   --admin-pass CLAVE       contraseña del panel (por defecto: aleatoria; mínimo 8 caracteres)
 #   --clients-port PUERTO    puerto para clientes Xtream Codes / M3U (por defecto: 25461 o, si está ocupado, uno libre)
 #   --no-firewall            no tocar el cortafuegos (ufw)
+#   --sin-nodo               no instalar el nodo de streaming en este servidor (por defecto sí: el mismo servidor
+#                            reenvía y transcodifica canales; al actualizar se actualiza también el nodo)
 # En un servidor ya instalado (sudo bash /opt/iptv/install-ubuntu.sh …):
 #   --reset-admin            solo pone una contraseña nueva al usuario del panel [--admin-user U] [--admin-pass C]
 #   --set-clients-port N     solo cambia el puerto de clientes (p. ej. 25461 después de apagar XtreamUI)
@@ -31,6 +33,7 @@ RESET_ADMIN=0
 SET_CLIENTS_PORT=""
 CLIENTS_PORT=""
 FIREWALL=1
+LOCAL_NODE=1
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -40,6 +43,7 @@ while [[ $# -gt 0 ]]; do
     --clients-port) CLIENTS_PORT="${2:-}"; shift 2 ;;
     --set-clients-port) SET_CLIENTS_PORT="${2:-}"; shift 2 ;;
     --no-firewall) FIREWALL=0; shift ;;
+    --sin-nodo) LOCAL_NODE=0; shift ;;
     -h|--help) sed -n '2,23p' "$0"; exit 0 ;;
     *) echo "Opción desconocida: $1 (usa --help)"; exit 1 ;;
   esac
@@ -404,6 +408,53 @@ fi
 CLIENTS_OK=1
 if ! curl -fsS "http://127.0.0.1:${CLIENTS_PORT}/health" 2>/dev/null | grep -q '"ok"'; then CLIENTS_OK=0; fi
 
+# ---------------------------------------------------------------------------------------------------------------
+# Nodo de streaming en este mismo servidor (reenvío y transcodificación con FFmpeg).
+# Se registra solo en el portal (Servidores → Nodos de streaming) y se conecta por 127.0.0.1.
+# ---------------------------------------------------------------------------------------------------------------
+NODE_MSG=""
+NODE_PORT=""
+NODE_ENV=/etc/iptv-node.env
+if (( LOCAL_NODE )); then
+  step "Nodo de streaming en este servidor"
+  if [[ -f /etc/systemd/system/iptv-node.service ]]; then
+    if grep -q '^MAIN_URL=http://127.0.0.1:' "$NODE_ENV" 2>/dev/null; then
+      NODE_TOKEN="$(sed -n 's/^NODE_TOKEN=//p' "$NODE_ENV")"
+      NODE_PORT="$(sed -n 's/^PORT=//p' "$NODE_ENV")"
+      sed -i "s#^MAIN_URL=.*#MAIN_URL=http://127.0.0.1:${PORTAL_PORT}#" "$NODE_ENV"
+      if curl -fsS "http://127.0.0.1:${PORTAL_PORT}/api/node/agent.js?token=${NODE_TOKEN}" -o /opt/iptv-node/iptv-node.js.new; then
+        mv /opt/iptv-node/iptv-node.js.new /opt/iptv-node/iptv-node.js
+        chown iptvnode:iptvnode /opt/iptv-node/iptv-node.js
+      fi
+      systemctl restart iptv-node
+      NODE_MSG="actualizado (puerto ${NODE_PORT})"
+    else
+      NODE_MSG="este servidor ya tiene un nodo conectado a otro portal; no se tocó"
+    fi
+  else
+    NODE_PORT="$(first_free_port 8090 8091 8092 8093 18090)" || NODE_PORT=""
+    if [[ -z "$NODE_PORT" ]]; then
+      NODE_MSG="no se instaló: no hay un puerto libre (8090-8093, 18090)"
+    else
+      NODE_TOKEN="$(cd "$APP_DIR/server" && sudo -u "$APP_USER" node scripts/local-node.js)" || NODE_TOKEN=""
+      NODE_SCRIPT="$(mktemp)"
+      if [[ -n "$NODE_TOKEN" ]] && curl -fsS "http://127.0.0.1:${PORTAL_PORT}/api/node/install.sh?token=${NODE_TOKEN}&port=${NODE_PORT}" -o "$NODE_SCRIPT"; then
+        if bash "$NODE_SCRIPT" >/var/log/iptv-node-install.log 2>&1; then
+          NODE_MSG="instalado en el puerto ${NODE_PORT}"
+        else
+          NODE_MSG="falló la instalación (detalles en /var/log/iptv-node-install.log)"
+          NODE_PORT=""
+        fi
+      else
+        NODE_MSG="no se pudo preparar (el portal no entregó el instalador del nodo)"
+        NODE_PORT=""
+      fi
+      rm -f "$NODE_SCRIPT"
+    fi
+  fi
+  echo "Nodo de streaming: ${NODE_MSG}"
+fi
+
 echo
 echo "==> Puertos de red (interfaces) y sus IPs"
 DEFAULT_IF="$(ip -4 route show default 2>/dev/null | awk '{for (i=1;i<=NF;i++) if ($i=="dev") {print $(i+1); exit}}')"
@@ -445,6 +496,15 @@ echo "   Clientes (IPTV Smarters, TiviMate, app propia):"
 echo "     Servidor:  http://${HOST_SHOW}:${CLIENTS_PORT}"
 if (( ! CLIENTS_OK )); then
 echo "     ¡Atención! El puerto ${CLIENTS_PORT} no responde (¿ocupado por otro programa?)."
+fi
+if [[ -n "$NODE_PORT" ]]; then
+echo
+echo "   Nodo de streaming (reenvío y transcodificación): este servidor"
+echo "     Puerto ${NODE_PORT}/tcp: ábrelo también en el cortafuegos del proveedor"
+echo "     o del router, porque los clientes reciben el video por ese puerto."
+elif [[ -n "$NODE_MSG" ]]; then
+echo
+echo "   Nodo de streaming: ${NODE_MSG}"
 fi
 if [[ -n "$XTREAM_KIND" ]]; then
 echo

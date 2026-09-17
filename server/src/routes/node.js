@@ -48,6 +48,9 @@ router.get('/install.sh', async (req, res) => {
   const server = await authServer(req);
   const portal = `${req.protocol}://${req.get('host')}`;
   const port = (() => {
+    // El instalador del portal elige un puerto libre para el nodo local (?port=)
+    const asked = Number(req.query.port);
+    if (Number.isInteger(asked) && asked > 0 && asked < 65536) return String(asked);
     try {
       return new URL(server.public_url).port || '8090';
     } catch {
