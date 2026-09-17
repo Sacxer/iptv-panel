@@ -3,7 +3,7 @@
 # tiene el portal instalado (curl …/install.sh | sudo bash). No lo use en el servidor con sus clientes reales:
 # el programa se niega si el portal ya tiene clientes.
 #
-#   sudo bash /opt/iptv-src/deploy/demo-revision.sh [--rehacer]
+#   sudo bash /opt/iptv-src/deploy/demo-revision.sh [--rehacer] [--forzar]
 #
 # Qué hace:
 #  1. Instala FFmpeg y descarga 4 películas abiertas de la Fundación Blender (Creative Commons Atribución):
@@ -13,17 +13,18 @@
 #  3. Carga en el portal los canales (por el nodo de este servidor si está instalado), las películas, una serie,
 #     un paquete, un mensaje, un aviso y dos cuentas de prueba (lgqa1 y lgqa2), y las muestra al final.
 # Volver a ejecutarlo no descarga ni duplica nada; con --rehacer crea el contenido y las cuentas otra vez.
+# --forzar: cargarlo aunque el portal ya tenga clientes (p. ej. uno creado a mano para probar).
 set -euo pipefail
 
 APP_DIR=/opt/iptv
 APP_USER=iptv
 DEMO=/var/lib/iptv-demo
 NGINX_SITE=/etc/nginx/sites-available/iptv
-REDO=""
+LOADER_ARGS=()
 for a in "$@"; do
   case "$a" in
-    --rehacer) REDO="--rehacer" ;;
-    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
+    --rehacer|--forzar) LOADER_ARGS+=("$a") ;;
+    -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
     *) echo "Opción desconocida: $a"; exit 1 ;;
   esac
 done
@@ -151,7 +152,12 @@ else
 fi
 
 step "Contenido y cuentas de prueba en el portal"
-(cd "$APP_DIR/server" && sudo -u "$APP_USER" node scripts/demo-revision.js $REDO)
+(cd "$APP_DIR/server" && sudo -u "$APP_USER" node scripts/demo-revision.js ${LOADER_ARGS[@]+"${LOADER_ARGS[@]}"})
 echo
 echo "Listo. Pruebe con la app (Xtream Codes) usando el servidor y una de las cuentas de arriba."
-echo "Los canales pasan por el nodo de este servidor: su puerto (8090) debe estar abierto en el cortafuegos del proveedor."
+NODE_PORT="$(sed -n 's/^PORT=//p' /etc/iptv-node.env 2>/dev/null || true)"
+if [[ -n "$NODE_PORT" ]]; then
+  echo "Los canales pasan por el nodo de este servidor: el puerto ${NODE_PORT}/tcp debe estar abierto en el cortafuegos del proveedor."
+else
+  echo "Aviso: el nodo de streaming de este servidor no está instalado; actualice el portal (instalador) para que los canales funcionen."
+fi

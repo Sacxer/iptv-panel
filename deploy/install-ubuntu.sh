@@ -233,9 +233,11 @@ fi
 step "Copiando el programa"
 # Solo el código: nunca datos (base, backups, APK, EPG) ni contraseñas (.env) de donde se copia.
 # Al actualizar, los datos y el .env que ya tenga este servidor se conservan.
+# node/: el programa de los nodos de streaming (el portal lo entrega en /api/node/agent.js).
 tar -C "$SRC_DIR" \
   --exclude='server/data' --exclude='server/.env' --exclude='node_modules' --exclude='admin/dist' \
-  -cf - server admin docs | tar -C "$APP_DIR" -xf -
+  --exclude='node/portal.json' \
+  -cf - server admin docs node | tar -C "$APP_DIR" -xf -
 cp "$SRC_DIR/deploy/install-ubuntu.sh" "$APP_DIR/install-ubuntu.sh" 2>/dev/null || true
 # De qué versión de GitHub se instaló: el panel lo compara para avisar de actualizaciones.
 if command -v git >/dev/null && git -C "$SRC_DIR" rev-parse HEAD >/dev/null 2>&1; then

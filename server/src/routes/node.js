@@ -74,6 +74,8 @@ echo "==> Programa del nodo"
 id -u iptvnode >/dev/null 2>&1 || useradd --system --home /opt/iptv-node --shell /usr/sbin/nologin iptvnode
 mkdir -p /opt/iptv-node
 curl -fsSL "${portal}/api/node/agent.js?token=${server.token}" -o /opt/iptv-node/iptv-node.js
+# El programa usa módulos ES (import/export)
+echo '{"type":"module"}' > /opt/iptv-node/package.json
 # Acceso a GPU (NVIDIA / Intel) si existe
 usermod -aG video,render iptvnode 2>/dev/null || true
 chown -R iptvnode:iptvnode /opt/iptv-node
