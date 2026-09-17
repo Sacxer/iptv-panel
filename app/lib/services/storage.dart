@@ -23,6 +23,7 @@ class Storage {
   static const _kLastProfile = 'last_profile_id';
   static const _kLiveFormat = 'settings_live_format';
   static const _kAutoLogin = 'settings_auto_login';
+  static const _kAutoStartAsked = 'settings_auto_start_asked';
 
   // ---------- Perfiles ----------
 
@@ -60,8 +61,14 @@ class Storage {
   String get liveFormat => _prefs.getString(_kLiveFormat) ?? 'ts';
   Future<void> setLiveFormat(String v) => _prefs.setString(_kLiveFormat, v);
 
-  bool get autoLogin => _prefs.getBool(_kAutoLogin) ?? false;
+  /// Entrar solo con el último perfil usado. Activado de fábrica (desde 1.0.3): si el usuario
+  /// nunca tocó la opción vale `true`; quien la apagó a mano la conserva apagada.
+  bool get autoLogin => _prefs.getBool(_kAutoLogin) ?? true;
   Future<void> setAutoLogin(bool v) => _prefs.setBool(_kAutoLogin, v);
+
+  /// Ya se preguntó (una vez por equipo) por el permiso para abrir la app al encender el TV box.
+  bool get autoStartAsked => _prefs.getBool(_kAutoStartAsked) ?? false;
+  Future<void> setAutoStartAsked(bool v) => _prefs.setBool(_kAutoStartAsked, v);
 
   // ---------- Actualizaciones ("Más tarde") ----------
 

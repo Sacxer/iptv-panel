@@ -13,6 +13,9 @@ import 'session_loader_screen.dart';
 
 /// Selección de perfil al iniciar.
 class ProfilesScreen extends StatefulWidget {
+  /// Entrar solo con el último perfil ([Storage.autoLogin], activado de fábrica). Solo lo pide
+  /// la pantalla con la que abre la app, y una vez por arranque (`_autoLoginDone`): al cambiar
+  /// de perfil o cerrar sesión (`switchProfile`) se vuelve aquí sin entrar solo.
   final bool allowAutoLogin;
   const ProfilesScreen({super.key, this.allowAutoLogin = false});
 

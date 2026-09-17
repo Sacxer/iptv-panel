@@ -280,6 +280,88 @@ class PortalServer {
   }
 }
 
+/// Secciones de contenido que ve el cliente (`content` en `/api/client/info`, portales desde
+/// la app 1.0.3):
+///
+/// ```json
+/// "content": {"sections": ["live", "movies", "series"], "mode": "auto", "start": "menu"}
+/// ```
+class PortalContent {
+  static const String live = 'live';
+  static const String movies = 'movies';
+  static const String series = 'series';
+
+  /// Orden de las secciones en la app.
+  static const List<String> known = [live, movies, series];
+
+  /// Secciones permitidas (subconjunto de [known], sin repetir y en ese orden).
+  final List<String> sections;
+
+  /// `auto` (por paquetes) o `manual` (elegidas en la ficha del cliente). Solo informativo.
+  final String mode;
+
+  /// `menu` o `last_channel` (abrir directo en el último canal; solo con `sections == ["live"]`).
+  final String start;
+
+  const PortalContent({
+    this.sections = known,
+    this.mode = 'auto',
+    this.start = 'menu',
+  });
+
+  bool get startInLastChannel => start == 'last_channel';
+
+  /// `null` si no viene (portal anterior) o no trae ninguna sección válida: en ese caso la app
+  /// decide sola qué mostrar, como con XtreamUI.
+  static PortalContent? fromJson(dynamic json) {
+    if (json is! Map) return null;
+    final j = asMap(json);
+    final found = <String>{};
+    for (final s in asStringList(j['sections'])) {
+      final name = _sectionName(s);
+      if (name != null) found.add(name);
+    }
+    if (found.isEmpty) return null;
+    final sections = known.where(found.contains).toList(growable: false);
+    final mode = str(j['mode']).trim().toLowerCase() == 'manual' ? 'manual' : 'auto';
+    final onlyLive = sections.length == 1 && sections.first == live;
+    final start = switch (str(j['start']).trim().toLowerCase()) {
+      'last_channel' => 'last_channel',
+      'menu' => 'menu',
+      // Sin dato: el último canal solo para clientes que únicamente tienen canales.
+      _ => onlyLive ? 'last_channel' : 'menu',
+    };
+    return PortalContent(sections: sections, mode: mode, start: start);
+  }
+
+  static String? _sectionName(String raw) {
+    switch (raw.trim().toLowerCase()) {
+      case 'live':
+      case 'channels':
+      case 'tv':
+        return live;
+      case 'movies':
+      case 'movie':
+      case 'vod':
+        return movies;
+      case 'series':
+        return series;
+      default:
+        return null;
+    }
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is PortalContent &&
+      other.mode == mode &&
+      other.start == start &&
+      other.sections.join(',') == sections.join(',');
+
+  @override
+  int get hashCode => Object.hash(mode, start, Object.hashAll(sections));
+}
+
 /// Respuesta de `GET /api/client/info`.
 class PortalInfo {
   final String serverName;
@@ -293,6 +375,10 @@ class PortalInfo {
   /// Identidad del portal (portales desde la app 1.0.2; `null` en los anteriores).
   final PortalServer? server;
 
+  /// Secciones que ve el cliente (portales desde la app 1.0.3; `null` en los anteriores:
+  /// se muestra lo que haya).
+  final PortalContent? content;
+
   const PortalInfo({
     this.serverName = '',
     this.user = const PortalUser(),
@@ -302,6 +388,7 @@ class PortalInfo {
     this.messages = const [],
     this.unreadMessages = 0,
     this.server,
+    this.content,
   });
 
   PortalInfo copyWith({List<PortalMessage>? messages, int? unreadMessages}) =>
@@ -314,6 +401,7 @@ class PortalInfo {
         messages: messages ?? this.messages,
         unreadMessages: unreadMessages ?? this.unreadMessages,
         server: server,
+        content: content,
       );
 
   factory PortalInfo.fromJson(dynamic json) {
@@ -334,6 +422,7 @@ class PortalInfo {
       unreadMessages: asInt(j['unread_messages']) ??
           messages.where((m) => !m.read).length,
       server: PortalServer.fromJson(j['server']),
+      content: PortalContent.fromJson(j['content']),
     );
   }
 }

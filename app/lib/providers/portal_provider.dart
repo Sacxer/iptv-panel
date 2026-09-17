@@ -41,6 +41,10 @@ class PortalProvider extends ChangeNotifier {
 
   List<PortalMessage> get messages => enabled ? (info?.messages ?? const []) : const [];
 
+  /// Secciones que el portal deja ver a este cliente (`null`: el portal no lo dice y la app
+  /// lo deduce, ver [SessionProvider.sectionsWith]).
+  PortalContent? get content => enabled ? info?.content : null;
+
   NoticeSettings get noticeSettings => info?.noticeSettings ?? const NoticeSettings();
 
   PortalOutage? get activeOutage {

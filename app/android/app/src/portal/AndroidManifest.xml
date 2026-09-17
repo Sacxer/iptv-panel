@@ -3,6 +3,19 @@
          La versión "play" NO lleva este permiso (Google Play lo restringe). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- Solo la versión "portal": abrir la app al encender el TV box (BootReceiver). Android 10+
+         exige "Mostrar sobre otras apps" para abrir una pantalla desde el arranque. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- Saber si el equipo tiene la pantalla del permiso "Mostrar sobre otras apps" (Android 11+). -->
+    <queries>
+        <intent>
+            <action android:name="android.settings.action.MANAGE_OVERLAY_PERMISSION" />
+            <data android:scheme="package" />
+        </intent>
+    </queries>
+
     <application>
         <!-- Entrega el APK descargado (cache/updates) al instalador del sistema. -->
         <provider
@@ -10,5 +23,17 @@
             android:authorities="${applicationId}.updates"
             android:exported="false"
             android:grantUriPermissions="true" />
+
+        <!-- Abre la app al encender el equipo (solo actúa en TV; ver BootReceiver.kt). -->
+        <receiver
+            android:name="com.iptvplayer.iptv_player.BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

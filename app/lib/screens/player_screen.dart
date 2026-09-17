@@ -13,6 +13,7 @@ import '../providers/library_provider.dart';
 import '../providers/portal_provider.dart';
 import '../providers/session_provider.dart';
 import '../services/api_exception.dart';
+import '../services/channel_zapping.dart';
 import '../services/content_source.dart';
 import '../services/device.dart';
 import '../services/heartbeat.dart';
@@ -39,6 +40,13 @@ const _aspectModes = [
 ];
 
 /// Reproductor a pantalla completa (en vivo y VOD).
+///
+/// Canales en vivo con control remoto (estilo decodificador):
+/// - ↑/↓, CH+/CH−: canal anterior/siguiente (con los controles ocultos).
+/// - Números: escribir el canal (recuadro `12_`); cambia a los 2 s, con OK o al completar las
+///   cifras del canal más alto.
+/// - OK: lista de canales sobre el video (↑/↓ para moverse, OK para cambiar, Atrás para cerrar).
+/// - ←/→, Info o Menú: muestran los controles y la información del canal.
 class PlayerScreen extends StatefulWidget {
   final List<MediaItem> playlist;
   final int initialIndex;
@@ -64,6 +72,8 @@ class _PlayerScreenState extends State<PlayerScreen>
   late final SessionProvider _session;
   PlaybackHeartbeat? _heartbeat;
 
+  /// Lista que se recorre (puede pasar a la lista completa al escribir un número de canal).
+  late List<MediaItem> _playlist;
   late int _index;
   Duration? _pendingStart;
   final List<StreamSubscription<dynamic>> _subs = [];
@@ -104,9 +114,19 @@ class _PlayerScreenState extends State<PlayerScreen>
   final FocusNode _rootFocus = FocusNode(debugLabel: 'player_root');
   final FocusNode _playFocus = FocusNode(debugLabel: 'player_play');
 
-  MediaItem get _item => widget.playlist[_index];
+  // Número de canal que se escribe con el control.
+  ChannelNumberEntry _numberEntry = const ChannelNumberEntry();
+  Timer? _numberTimer;
+  String? _numberMessage;
+  Timer? _numberMessageTimer;
+  Future<List<MediaItem>?>? _allChannelsFuture;
+  List<MediaItem>? _allChannels;
+  Map<String, int>? _allIndex;
+  bool _channelListOpen = false;
+
+  MediaItem get _item => _playlist[_index];
   bool get _isLive => _item.type == ContentType.live;
-  bool get _hasList => widget.playlist.length > 1;
+  bool get _hasList => _playlist.length > 1;
   bool get _isBlocked =>
       _portal.blockingOutage != null || _portal.userBlocked;
   bool get _touchMode =>
@@ -119,7 +139,8 @@ class _PlayerScreenState extends State<PlayerScreen>
     _portal = context.read<PortalProvider>();
     _library = context.read<LibraryProvider>();
     _session = context.read<SessionProvider>();
-    _index = widget.initialIndex.clamp(0, widget.playlist.length - 1);
+    _playlist = widget.playlist;
+    _index = widget.initialIndex.clamp(0, _playlist.length - 1);
     _pendingStart = widget.startPosition;
     if (_pendingStart == null && _item.type == ContentType.episode) {
       final r = _library.resumePosition(_item);
@@ -216,6 +237,8 @@ class _PlayerScreenState extends State<PlayerScreen>
       _errorCheck,
       _bgTimer,
       _seekBubbleTimer,
+      _numberTimer,
+      _numberMessageTimer,
     ]) {
       t?.cancel();
     }
@@ -319,7 +342,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       return;
     }
     _library.saveResumePosition(_item, Duration.zero, Duration.zero);
-    if (_index < widget.playlist.length - 1) {
+    if (_index < _playlist.length - 1) {
       _goTo(_index + 1);
     } else {
       Navigator.of(context).maybePop();
@@ -402,11 +425,14 @@ class _PlayerScreenState extends State<PlayerScreen>
     }
   }
 
-  void _goTo(int index) {
-    if (widget.playlist.isEmpty) return;
+  /// Va a la posición [index] de la lista (o de [playlist], que pasa a ser la lista).
+  void _goTo(int index, {List<MediaItem>? playlist}) {
+    final list = playlist ?? _playlist;
+    if (list.isEmpty) return;
     _saveResume();
-    final len = widget.playlist.length;
+    final len = list.length;
     setState(() {
+      _playlist = list;
       _index = (index % len + len) % len;
       _retries = 0;
       _reconnecting = false;
@@ -423,6 +449,94 @@ class _PlayerScreenState extends State<PlayerScreen>
   void _changeChannel(int delta) {
     if (!_hasList) return;
     _goTo(_index + delta);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Número de canal (control remoto)
+  // ---------------------------------------------------------------------------
+
+  /// Lista completa de canales (para que los números sirvan vengan de la categoría que vengan).
+  /// Se pide al escribir el primer número; en la sesión normalmente ya está en caché.
+  Future<List<MediaItem>?> _loadAllChannels() {
+    return _allChannelsFuture ??= () async {
+      try {
+        final source = _session.source;
+        if (source == null) return null;
+        final all = await source
+            .items(ContentType.live)
+            .timeout(const Duration(seconds: 15));
+        _allChannels = all;
+        _allIndex = {for (var i = 0; i < all.length; i++) all[i].key: i};
+        return all;
+      } catch (_) {
+        _allChannelsFuture = null; // se reintenta con el próximo número
+        return null;
+      }
+    }();
+  }
+
+  /// Número que se muestra para un canal de la lista: su `num` o su posición en la lista completa.
+  int _channelNumber(int index) {
+    final item = _playlist[index];
+    final inAll = _allIndex?[item.key];
+    if (item.num != null || inAll == null) {
+      return channelNumberAt(_playlist, index);
+    }
+    return channelNumberAt(_allChannels!, inAll);
+  }
+
+  void _addDigit(int digit) {
+    unawaited(_loadAllChannels());
+    // Los números reemplazan a los controles (el aviso de error se deja con su foco).
+    if (_overlay && _fatalError == null) _hideOverlay();
+    _numberMessageTimer?.cancel();
+    final digits = [
+      channelNumberDigits(_playlist),
+      if (_allChannels != null) channelNumberDigits(_allChannels!),
+    ].reduce((a, b) => a > b ? a : b);
+    setState(() {
+      _numberMessage = null;
+      _numberEntry = _numberEntry.add(digit, length: digits);
+    });
+    _numberTimer?.cancel();
+    if (_numberEntry.isComplete) {
+      _commitNumber();
+    } else {
+      _numberTimer = Timer(ChannelNumberEntry.timeout, _commitNumber);
+    }
+  }
+
+  void _cancelNumber() {
+    _numberTimer?.cancel();
+    setState(() => _numberEntry = const ChannelNumberEntry());
+  }
+
+  Future<void> _commitNumber() async {
+    _numberTimer?.cancel();
+    final number = _numberEntry.number;
+    if (number == null || !mounted) return;
+    final all = await _loadAllChannels();
+    if (!mounted || _numberEntry.number != number) return;
+    setState(() => _numberEntry = const ChannelNumberEntry());
+    final target = resolveChannelNumber(number, _playlist, all);
+    if (target == null) {
+      _showNumberMessage(channelNotFoundMessage(number));
+      return;
+    }
+    final same = identical(target.channels, _playlist) && target.index == _index;
+    if (same || target.channels[target.index].key == _item.key) {
+      _showOverlay(); // ya está en ese canal
+      return;
+    }
+    _goTo(target.index, playlist: target.channels);
+  }
+
+  void _showNumberMessage(String message) {
+    _numberMessageTimer?.cancel();
+    setState(() => _numberMessage = message);
+    _numberMessageTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _numberMessage = null);
+    });
   }
 
   Future<void> _togglePlay() async {
@@ -491,7 +605,13 @@ class _PlayerScreenState extends State<PlayerScreen>
   void _scheduleHide() {
     _hideTimer?.cancel();
     _hideTimer = Timer(AppConfig.overlayHideDelay, () {
-      if (mounted && _playing && !_buffering) setState(() => _overlay = false);
+      if (!mounted || !_playing || _buffering) return;
+      setState(() => _overlay = false);
+      // Con los controles ocultos, OK y el resto de teclas las atiende el reproductor (no el
+      // botón que tenía el foco): en vivo OK abre la lista de canales.
+      if (!_touchMode && _rootFocus.hasFocus && !_rootFocus.hasPrimaryFocus) {
+        _rootFocus.requestFocus();
+      }
     });
   }
 
@@ -525,6 +645,10 @@ class _PlayerScreenState extends State<PlayerScreen>
   }
 
   void _handleBack() {
+    if (!_numberEntry.isEmpty) {
+      _cancelNumber();
+      return;
+    }
     if (_locked) {
       setState(() {
         _locked = false;
@@ -571,13 +695,43 @@ class _PlayerScreenState extends State<PlayerScreen>
       Device.toggleFullScreen();
       return KeyEventResult.handled;
     }
+    // Números del control: ir a un canal (en vivo), también desde el aviso de error.
+    final digit = digitForKey(key);
+    if (digit != null && _isLive) {
+      if (event is KeyDownEvent &&
+          !_isBlocked &&
+          _limitError == null &&
+          !_locked) {
+        _addDigit(digit);
+      }
+      return KeyEventResult.handled;
+    }
+    if (activateKeys.contains(key) && !_numberEntry.isEmpty) {
+      if (event is KeyDownEvent) _commitNumber();
+      return KeyEventResult.handled;
+    }
     if (_fatalError != null || _limitError != null || _isBlocked) {
       return KeyEventResult.ignored;
     }
-
     final isLive = _isLive;
+    // Ningún control enfocado: controles ocultos o, en vivo, el cartel que aparece al cambiar de
+    // canal. Así el control remoto sigue manejando los canales (estilo decodificador).
+    final passive = !_overlay || (isLive && _rootFocus.hasPrimaryFocus);
+
+    // Info / Menú: mostrar los controles (con el foco en ellos) u ocultarlos.
+    if (key == LogicalKeyboardKey.info || key == LogicalKeyboardKey.contextMenu) {
+      if (event is KeyDownEvent && !_locked) {
+        if (passive) {
+          _showOverlay(focusPlay: true);
+        } else {
+          _hideOverlay();
+        }
+      }
+      return KeyEventResult.handled;
+    }
+
     if (key == LogicalKeyboardKey.arrowUp || key == LogicalKeyboardKey.arrowDown) {
-      if (isLive && _hasList && !_overlay) {
+      if (isLive && _hasList && passive) {
         _changeChannel(key == LogicalKeyboardKey.arrowUp ? -1 : 1);
         return KeyEventResult.handled;
       }
@@ -589,7 +743,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       return KeyEventResult.ignored;
     }
     if (key == LogicalKeyboardKey.arrowLeft || key == LogicalKeyboardKey.arrowRight) {
-      if (!_overlay) {
+      if (passive) {
         if (!isLive) {
           _seekBy(key == LogicalKeyboardKey.arrowLeft ? -10 : 10);
         } else {
@@ -601,8 +755,13 @@ class _PlayerScreenState extends State<PlayerScreen>
       return KeyEventResult.ignored;
     }
     if (activateKeys.contains(key)) {
-      if (!_overlay) {
-        _showOverlay(focusPlay: true);
+      if (passive) {
+        if (isLive && _hasList && !_locked) {
+          // Estilo decodificador: OK abre la lista de canales sobre el video.
+          if (event is KeyDownEvent) _openChannelList();
+        } else {
+          _showOverlay(focusPlay: true);
+        }
         return KeyEventResult.handled;
       }
       _scheduleHide();
@@ -709,8 +868,26 @@ class _PlayerScreenState extends State<PlayerScreen>
   }
 
   Future<void> _openChannelList() async {
+    if (_channelListOpen) return;
+    _channelListOpen = true;
     _hideTimer?.cancel();
-    final selected = await showGeneralDialog<int>(
+    final int? selected;
+    try {
+      selected = await _showChannelList();
+    } finally {
+      _channelListOpen = false;
+    }
+    if (!mounted) return;
+    if (selected != null && selected != _index) {
+      _goTo(selected);
+    } else {
+      _scheduleHide();
+    }
+  }
+
+  /// Lista lateral sobre el video con el canal actual enfocado. Devuelve la posición elegida.
+  Future<int?> _showChannelList() {
+    return showGeneralDialog<int>(
       context: context,
       barrierDismissible: true,
       barrierLabel: 'Cerrar',
@@ -718,7 +895,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       transitionDuration: const Duration(milliseconds: 200),
       pageBuilder: (ctx, _, _) {
         final width = MediaQuery.sizeOf(ctx).width;
-        return Align(
+        final panel = Align(
           alignment: Alignment.centerRight,
           child: Material(
             color: AppColors.surface,
@@ -754,10 +931,10 @@ class _PlayerScreenState extends State<PlayerScreen>
                         controller: ScrollController(
                             initialScrollOffset:
                                 (_index > 2 ? (_index - 2) * 64.0 : 0)),
-                        itemCount: widget.playlist.length,
+                        itemCount: _playlist.length,
                         itemExtent: 64,
                         itemBuilder: (context, i) {
-                          final it = widget.playlist[i];
+                          final it = _playlist[i];
                           final current = i == _index;
                           return Padding(
                             padding: const EdgeInsets.symmetric(
@@ -783,7 +960,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                                   const SizedBox(width: 10),
                                   Expanded(
                                     child: Text(
-                                      '${it.num != null && _isLive ? '${it.num}  ' : ''}${it.name}',
+                                      '${_isLive ? '${_channelNumber(i)}  ' : ''}${it.name}',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
@@ -808,6 +985,21 @@ class _PlayerScreenState extends State<PlayerScreen>
             ),
           ),
         );
+        if (!_isLive) return panel;
+        return Focus(
+          canRequestFocus: false,
+          skipTraversal: true,
+          onKeyEvent: (_, event) {
+            final digit = digitForKey(event.logicalKey);
+            if (digit == null) return KeyEventResult.ignored;
+            if (event is KeyDownEvent) {
+              Navigator.of(ctx).pop();
+              _addDigit(digit);
+            }
+            return KeyEventResult.handled;
+          },
+          child: panel,
+        );
       },
       transitionBuilder: (ctx, anim, _, child) => SlideTransition(
         position: Tween(begin: const Offset(1, 0), end: Offset.zero)
@@ -815,11 +1007,6 @@ class _PlayerScreenState extends State<PlayerScreen>
         child: child,
       ),
     );
-    if (selected != null && selected != _index && mounted) {
-      _goTo(selected);
-    } else {
-      _scheduleHide();
-    }
   }
 
   // ---------------------------------------------------------------------------
@@ -978,7 +1165,44 @@ class _PlayerScreenState extends State<PlayerScreen>
             ),
           ),
         if (_fatalError != null) _errorPanel(),
+        if (!_numberEntry.isEmpty || _numberMessage != null) _numberBox(),
       ],
+    );
+  }
+
+  /// Recuadro arriba a la derecha con el número que se escribe (`12_`) o el aviso.
+  Widget _numberBox() {
+    final message = _numberMessage;
+    final compact = MediaQuery.sizeOf(context).width < 700;
+    return IgnorePointer(
+      child: SafeArea(
+        child: Align(
+          alignment: Alignment.topRight,
+          child: Padding(
+            padding: EdgeInsets.all(compact ? 16 : 32),
+            child: Container(
+              padding: EdgeInsets.symmetric(
+                  horizontal: message == null ? 22 : 18, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.75),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: message == null ? AppColors.accent : AppColors.warning,
+                  width: 2,
+                ),
+              ),
+              child: Text(
+                message ?? _numberEntry.label,
+                style: TextStyle(
+                  fontSize: message == null ? (compact ? 32 : 44) : 18,
+                  fontWeight: FontWeight.w800,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 

@@ -6,11 +6,13 @@ import '../models/profile.dart';
 import '../providers/app_update_provider.dart';
 import '../providers/portal_provider.dart';
 import '../providers/session_provider.dart';
+import '../services/auto_start.dart';
 import '../services/device.dart';
 import '../services/distribution.dart';
 import '../services/storage.dart';
 import '../theme.dart';
 import '../widgets/app_update_widgets.dart';
+import '../widgets/auto_start_widgets.dart';
 import '../widgets/common.dart';
 import '../widgets/focusable_card.dart';
 import 'navigation.dart';
@@ -171,6 +173,8 @@ class AccountScreen extends StatelessWidget {
               if (user.message.isNotEmpty) _Row('Mensaje', user.message),
             ],
           ),
+        // TV box con la versión portal: si la app se abrirá sola al encender.
+        if (AutoStart.available) const _AutoStartCard(),
         if (session.source != null)
           Padding(
             padding: const EdgeInsets.only(bottom: 14),
@@ -207,6 +211,89 @@ class AccountScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Cuenta')),
       body: SafeArea(top: false, child: list),
+    );
+  }
+}
+
+/// "Abrir al encender el equipo: activo / falta permiso" (solo TV box con la versión portal).
+/// Es informativo: la función no se puede apagar.
+class _AutoStartCard extends StatefulWidget {
+  const _AutoStartCard();
+
+  @override
+  State<_AutoStartCard> createState() => _AutoStartCardState();
+}
+
+class _AutoStartCardState extends State<_AutoStartCard>
+    with WidgetsBindingObserver {
+  AutoStartStatus? _status;
+  bool _opening = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _refresh();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Al volver de los ajustes, mostrar si ya quedó el permiso.
+    if (state == AppLifecycleState.resumed) _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final status = await AutoStart.status();
+    if (mounted) setState(() => _status = status);
+  }
+
+  Future<void> _allow() async {
+    if (_opening) return;
+    setState(() => _opening = true);
+    await openAutoStartPermission();
+    if (!mounted) return;
+    setState(() => _opening = false);
+    await _refresh();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final status = _status;
+    if (status == null || !status.supported) return const SizedBox.shrink();
+    final active = status.state == AutoStartState.active;
+    return _InfoCard(
+      title: 'Este equipo',
+      icon: Icons.tv_rounded,
+      children: [
+        _Row(
+          'Abrir al encender el equipo',
+          active ? 'Activo' : 'Falta permiso',
+          valueColor: active ? AppColors.success : AppColors.warning,
+        ),
+        if (!active) ...[
+          const SizedBox(height: 6),
+          Text(
+            status.hasOverlaySettings
+                ? autoStartPermissionMessage
+                : '$autoStartPermissionMessage $autoStartNoScreenMessage',
+            style: const TextStyle(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 10),
+          TvButton(
+            label: 'Permitir',
+            icon: Icons.check_rounded,
+            primary: true,
+            dense: true,
+            onPressed: _opening ? null : _allow,
+          ),
+        ],
+      ],
     );
   }
 }

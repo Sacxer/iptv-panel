@@ -64,6 +64,15 @@ class _SessionLoaderScreenState extends State<SessionLoaderScreen> {
       portal.stop();
     }
     if (!mounted || _cancelled) return;
+    // Sin datos del portal (XtreamUI, portal anterior o M3U) la app deduce qué secciones
+    // mostrar antes de abrir el inicio (así el menú no cambia al entrar).
+    if (portal.content == null) {
+      await session.detectSections().timeout(
+            const Duration(seconds: 20),
+            onTimeout: () {},
+          );
+      if (!mounted || _cancelled) return;
+    }
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const HomeScreen()),
       (_) => false,

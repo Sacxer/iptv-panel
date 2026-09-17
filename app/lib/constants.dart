@@ -10,7 +10,7 @@ class AppConfig {
 
   /// Versión de respaldo si no se puede leer la instalada (la real sale de pubspec.yaml,
   /// ver `Device.appVersion`).
-  static const String appVersion = '1.0.2';
+  static const String appVersion = '1.0.3';
 
   /// Base del User-Agent (se completa con sistema y modelo en `Device.userAgent`).
   static const String userAgentBase = 'IPTVPlayer/1.0';

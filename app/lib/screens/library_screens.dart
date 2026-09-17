@@ -64,12 +64,15 @@ class FavoritesScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final favorites = context.watch<LibraryProvider>().favorites;
+    final sections = watchSections(context);
+    final favorites =
+        sections.filter(context.watch<LibraryProvider>().favorites);
     if (favorites.isEmpty) {
-      return const EmptyView(
+      return EmptyView(
         icon: Icons.favorite_border_rounded,
         message:
-            'Aún no tiene favoritos.\nMantenga presionado un canal, película o serie para agregarlo.',
+            'Aún no tiene favoritos.\nMantenga presionado ${sections.describeOne()} para '
+            '${sections.live ? 'agregarlo' : 'agregarla'}.',
       );
     }
     return GroupedMediaRows(
@@ -90,7 +93,7 @@ class RecentsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final library = context.watch<LibraryProvider>();
-    final recents = library.recents;
+    final recents = watchSections(context).filter(library.recents);
     if (recents.isEmpty) {
       return const EmptyView(
         icon: Icons.history_rounded,

@@ -3,10 +3,14 @@ import 'package:provider/provider.dart';
 
 import '../constants.dart';
 import '../models/media_item.dart';
+import '../providers/library_provider.dart';
 import '../providers/portal_provider.dart';
 import '../providers/session_provider.dart';
+import '../services/channel_zapping.dart';
+import '../services/content_sections.dart';
 import '../services/device.dart';
 import '../theme.dart';
+import '../widgets/auto_start_widgets.dart';
 import '../widgets/common.dart';
 import '../widgets/focusable_card.dart';
 import '../widgets/portal_widgets.dart';
@@ -101,22 +105,98 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _sidebarFocused = false;
   bool _showingPopups = false;
   late final PortalProvider _portal;
+  late final SessionProvider _session;
+
+  /// Al volver del canal con el que abrió la sesión, TV en vivo enfoca el que se estaba viendo.
+  final ChannelFocusRequest _liveFocus = ChannelFocusRequest();
 
   @override
   void initState() {
     super.initState();
     _portal = context.read<PortalProvider>();
+    _session = context.read<SessionProvider>();
+    // Clientes solo con canales: la sesión abre en TV en vivo y reproduce el último canal.
+    final openLastChannel =
+        _session.sectionsWith(_portal.content).opensLastChannel;
+    if (openLastChannel) {
+      _section = HomeSection.live;
+      _visited.add(HomeSection.live);
+    }
     _portal.addListener(_onPortalChanged);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _onPortalChanged());
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _startup(openLastChannel));
   }
 
   @override
   void dispose() {
     _portal.removeListener(_onPortalChanged);
+    _liveFocus.dispose();
     for (final n in _navNodes.values) {
       n.dispose();
     }
     super.dispose();
+  }
+
+  /// Al abrir la sesión (una sola vez): permiso para abrir al encender (TV box), avisos del
+  /// portal y, si corresponde, el último canal.
+  Future<void> _startup(bool openLastChannel) async {
+    if (!mounted) return;
+    _showingPopups = true;
+    try {
+      await maybeAskAutoStartPermission(context);
+      if (!mounted) return;
+      if (openLastChannel) {
+        if (!_portal.userBlocked && _portal.hasPendingPopups) {
+          await showPendingPopups(context);
+          if (!mounted) return;
+        }
+        await _openLastChannel();
+      }
+    } finally {
+      _showingPopups = false;
+    }
+    if (mounted) _onPortalChanged();
+  }
+
+  /// La cuenta no puede reproducir (suspendida, vencida, corte con bloqueo…): no se abre el
+  /// canal y se ve el aviso que ya existe.
+  bool get _playbackBlocked =>
+      _portal.userBlocked || _portal.blockingOutage != null;
+
+  /// Reproduce a pantalla completa el último canal visto (o el primero de la lista). Atrás
+  /// vuelve a TV en vivo con ese canal enfocado.
+  Future<void> _openLastChannel() async {
+    final source = _session.source;
+    if (source == null || _playbackBlocked) return;
+    final List<MediaItem> channels;
+    try {
+      channels = await source.items(ContentType.live);
+    } catch (_) {
+      return; // TV en vivo muestra el error con "Reintentar".
+    }
+    if (!mounted || !identical(_session.source, source)) return;
+    final library = context.read<LibraryProvider>();
+    final index = startChannelIndex(channels, library.recents);
+    if (index < 0) return; // Sin canales: la lista vacía de siempre.
+    if (!await _waitUntilOnTop() || _playbackBlocked) return;
+    if (!mounted) return;
+    await playItems(context, channels, index);
+    if (!mounted) return;
+    _select(HomeSection.live);
+    // El canal que quedó (se pudo cambiar en el reproductor).
+    final last = startChannelIndex(channels, library.recents);
+    if (last >= 0) _liveFocus.request(channels[last].key);
+  }
+
+  /// Espera a que no haya nada encima del inicio (p. ej. el aviso de una actualización).
+  Future<bool> _waitUntilOnTop() async {
+    final until = DateTime.now().add(const Duration(minutes: 5));
+    while (true) {
+      if (!mounted) return false;
+      if (ModalRoute.of(context)?.isCurrent ?? false) return true;
+      if (DateTime.now().isAfter(until)) return false;
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
   }
 
   Future<void> _onPortalChanged() async {
@@ -130,13 +210,13 @@ class _HomeScreenState extends State<HomeScreen> {
     _showingPopups = false;
   }
 
-  List<HomeSection> _wideSections(SessionProvider session, PortalProvider portal) {
-    final src = session.source;
+  List<HomeSection> _wideSections(
+      ContentSections content, PortalProvider portal) {
     return [
       HomeSection.home,
-      HomeSection.live,
-      if (src?.supportsMovies ?? false) HomeSection.movies,
-      if (src?.supportsSeries ?? false) HomeSection.series,
+      if (content.live) HomeSection.live,
+      if (content.movies) HomeSection.movies,
+      if (content.series) HomeSection.series,
       HomeSection.favorites,
       HomeSection.recents,
       HomeSection.search,
@@ -145,16 +225,20 @@ class _HomeScreenState extends State<HomeScreen> {
     ];
   }
 
-  List<HomeSection> _phoneSections(SessionProvider session) {
-    final src = session.source;
+  List<HomeSection> _phoneSections(ContentSections content) {
     return [
       HomeSection.home,
-      HomeSection.live,
-      if (src?.supportsMovies ?? false) HomeSection.movies,
-      if (src?.supportsSeries ?? false) HomeSection.series,
+      if (content.live) HomeSection.live,
+      if (content.movies) HomeSection.movies,
+      if (content.series) HomeSection.series,
       HomeSection.more,
     ];
   }
+
+  /// Sección a la que vuelve Atrás antes de salir: TV en vivo para los clientes que abren en
+  /// el último canal; Inicio para los demás.
+  static HomeSection _baseSection(ContentSections content) =>
+      content.opensLastChannel ? HomeSection.live : HomeSection.home;
 
   void _select(HomeSection s) {
     setState(() {
@@ -196,13 +280,16 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _onBack(bool wide) async {
-    if (wide && !_sidebarFocused) {
+    final base = _baseSection(readSections(context));
+    // Solo canales: desde la lista de canales, Atrás ya es salir.
+    final exitFromList = base == HomeSection.live && _section == base;
+    if (wide && !_sidebarFocused && !exitFromList) {
       _navNodes[_section]?.requestFocus();
       return;
     }
-    if (_section != HomeSection.home) {
-      _select(HomeSection.home);
-      if (wide) _navNodes[HomeSection.home]?.requestFocus();
+    if (_section != base) {
+      _select(base);
+      if (wide) _navNodes[base]?.requestFocus();
       return;
     }
     final exit = await confirmDialog(
@@ -219,7 +306,7 @@ class _HomeScreenState extends State<HomeScreen> {
       case HomeSection.home:
         return DashboardScreen(onNavigate: (k) => _navigate(k, wide));
       case HomeSection.live:
-        return const LiveScreen();
+        return LiveScreen(focusRequest: _liveFocus);
       case HomeSection.movies:
         return const CatalogScreen(type: ContentType.movie);
       case HomeSection.series:
@@ -294,9 +381,13 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final wide = Responsive.isWide(context);
-    final sections = wide ? _wideSections(session, portal) : _phoneSections(session);
+    // Solo las secciones que ve el cliente (el portal puede cambiarlas en plena sesión).
+    final content = session.sectionsWith(portal.content);
+    final sections =
+        wide ? _wideSections(content, portal) : _phoneSections(content);
     if (!sections.contains(_section)) {
-      _section = HomeSection.home;
+      final base = _baseSection(content);
+      _section = sections.contains(base) ? base : HomeSection.home;
       _visited.add(_section);
     }
 

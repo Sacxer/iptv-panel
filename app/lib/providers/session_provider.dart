@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../models/portal_models.dart';
 import '../models/profile.dart';
 import '../models/xtream_models.dart';
 import '../services/api_exception.dart';
+import '../services/content_sections.dart';
 import '../services/content_source.dart';
 import '../services/device.dart';
 import '../services/epg_service.dart';
@@ -61,6 +64,29 @@ class SessionProvider extends ChangeNotifier {
 
   /// Buscando el portal en otra dirección.
   bool relocating = false;
+
+  /// Secciones deducidas del contenido, para cuando el portal no dice cuáles ve el cliente
+  /// (XtreamUI, portal anterior o M3U). Ver [detectSections] y [sectionsWith].
+  ContentSections detectedSections = ContentSections.all;
+  bool _sectionsDetected = false;
+
+  /// Secciones que ve el cliente: las del portal si las manda ([PortalProvider.content]);
+  /// si no, las deducidas.
+  ContentSections sectionsWith(PortalContent? portalContent) =>
+      ContentSections.effective(portalContent, detectedSections);
+
+  /// Deduce qué secciones tienen contenido (ver [ContentSections.detect]). Nunca lanza.
+  Future<void> detectSections() async {
+    final s = source;
+    if (s == null) return;
+    _sectionsDetected = true;
+    final result = await ContentSections.detect(s);
+    if (!identical(source, s)) return; // se cerró o cambió la sesión
+    if (result != detectedSections) {
+      detectedSections = result;
+      notifyListeners();
+    }
+  }
 
   String get liveFormat => storage.liveFormat;
 
@@ -144,6 +170,7 @@ class SessionProvider extends ChangeNotifier {
         source = M3uSource(p, data);
       }
       epg = EpgService(source!);
+      detectedSections = ContentSections.supportedBy(source!);
       status = SessionStatus.ready;
       progress = '';
       notifyListeners();
@@ -182,6 +209,8 @@ class SessionProvider extends ChangeNotifier {
     error = null;
     errorCanRelocate = false;
     block = null;
+    detectedSections = ContentSections.all;
+    _sectionsDetected = false;
     status = SessionStatus.idle;
     if (notify) notifyListeners();
   }
@@ -197,6 +226,8 @@ class SessionProvider extends ChangeNotifier {
       s.data = await M3uSource.loadPlaylist(s.profile);
     }
     notifyListeners();
+    // Si las secciones se dedujeron, se vuelven a revisar con el contenido nuevo.
+    if (_sectionsDetected) unawaited(detectSections());
   }
 
   // ---------------------------------------------------------------------------

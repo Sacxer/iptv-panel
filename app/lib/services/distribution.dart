@@ -22,4 +22,7 @@ class AppDistribution {
 
   /// Actualizador propio desde el portal (solo versión portal).
   static const bool updaterEnabled = !isPlay;
+
+  /// Abrir la app al encender el TV box (solo versión portal; ver `services/auto_start.dart`).
+  static const bool bootStartEnabled = !isPlay;
 }

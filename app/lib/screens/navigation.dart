@@ -2,14 +2,31 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/media_item.dart';
+import '../models/portal_models.dart';
 import '../providers/library_provider.dart';
 import '../providers/portal_provider.dart';
 import '../providers/session_provider.dart';
+import '../services/content_sections.dart';
 import '../widgets/common.dart';
 import 'movie_detail_screen.dart';
 import 'player_screen.dart';
 import 'profiles_screen.dart';
 import 'series_detail_screen.dart';
+
+/// Secciones de contenido que ve el cliente (las del portal o las deducidas). Para `build`:
+/// reconstruye el widget cuando cambian (p. ej. al refrescar la información del portal).
+ContentSections watchSections(BuildContext context) {
+  final detected = context
+      .select<SessionProvider, ContentSections>((s) => s.detectedSections);
+  final content =
+      context.select<PortalProvider, PortalContent?>((p) => p.content);
+  return ContentSections.effective(content, detected);
+}
+
+/// Igual que [watchSections], fuera de `build`.
+ContentSections readSections(BuildContext context) => context
+    .read<SessionProvider>()
+    .sectionsWith(context.read<PortalProvider>().content);
 
 /// Abre un ítem: reproduce canales/episodios o muestra el detalle.
 void openMediaItem(BuildContext context, MediaItem item, List<MediaItem> list) {

@@ -5,7 +5,9 @@ Interfaz en español, tema oscuro, usable con pantalla táctil, ratón, teclado 
 
 ## Funciones
 
-- **Perfiles** guardados (se elige uno al iniciar, se pueden editar y eliminar):
+- **Perfiles** guardados (se elige uno al iniciar, se pueden editar y eliminar). Desde 1.0.3 la app **entra sola con el
+  último perfil usado** (se puede apagar en *Ajustes → Iniciar con el último perfil usado*; quien lo apagó lo conserva).
+  Al cambiar de perfil no vuelve a entrar sola.
   - **Xtream Codes**: URL del servidor con puerto, usuario y contraseña (`player_api.php`).
   - **Lista M3U por URL**.
   - **Lista M3U desde archivo** (se guarda una copia dentro de la app).
@@ -21,6 +23,21 @@ Interfaz en español, tema oscuro, usable con pantalla táctil, ratón, teclado 
   - Pistas de audio y subtítulos, relación de aspecto (Ajustar / Rellenar / 16:9 / Estirar / 4:3), bloqueo de controles.
   - Reconexión automática con indicador, continuar película/episodio donde se dejó, siguiente episodio automático.
   - Control remoto / teclado: ↑/↓ o CH+/CH− cambian de canal, ←/→ adelantan/retroceden, OK muestra controles, Atrás oculta/sale.
+  - **Canales en vivo estilo decodificador** (1.0.3): con los controles ocultos, **OK** abre la lista de canales sobre el
+    video (↑/↓, OK cambia, Atrás cierra); los **números** del control (o del teclado) escriben el canal en un recuadro
+    (`12_`) y cambia a los 2 s, con OK o al completar las cifras del canal más alto ("Canal 999 no existe" si no está).
+    Se usa el número del canal (`num`) o, si no tiene, su posición. **←/→, Info o Menú** muestran los controles y la
+    información del canal. En celular, el botón **Canales** de los controles abre la misma lista.
+- **Secciones por cliente** (1.0.3): el portal dice en `GET /api/client/info` → `content.sections` qué ve el cliente
+  (`live`, `movies`, `series`). Lo demás no existe para él: no aparece en el menú, Inicio, Buscar, Favoritos ni
+  Recientes, y sus listas no se descargan. Si el portal no lo dice (XtreamUI, portal anterior), la app oculta Películas o
+  Series cuando sus categorías **y** su lista vienen vacías (la lista solo se pide si no hay categorías); en listas M3U
+  también oculta TV en vivo si no trae canales. Si el portal cambia las secciones, el menú se actualiza solo.
+- **Clientes solo con canales** (1.0.3; `content.start = "last_channel"`, o deducido sin portal): al abrir la sesión
+  la app reproduce a pantalla completa el **último canal visto** (o el primero si ya no está). Atrás → lista de canales;
+  Atrás otra vez → salir. No reproduce si la cuenta está bloqueada o hay un corte con bloqueo (se ve el aviso). No tiene
+  opción para desactivarlo.
+- **TV box: abrir al encender el equipo** (1.0.3, solo versión *portal* y solo en TV): ver más abajo.
 - **Portal propio** (solo si `GET /api/client/ping` responde `portal: true`):
   - Avisos en **carrusel** (banner), **cinta** desplazable y **ventana emergente** (una vez por aviso), coloreados por nivel.
   - **Mensajes** con icono/color por tipo, insignia de no leídos y ventana al abrir la app para los de tipo `popup`.
@@ -213,7 +230,8 @@ Ver la huella del certificado: `keytool -list -v -keystore android/keystore/iptv
 
 ## Publicar una versión
 
-1. Suba la versión en `pubspec.yaml`: `version: 1.0.2+3` (nombre + número que **siempre** sube).
+1. Suba la versión en `pubspec.yaml`: `version: 1.0.3+4` (nombre + número que **siempre** sube) y
+   `AppConfig.appVersion` en `lib/constants.dart` (versión de respaldo).
 2. Compile (y opcionalmente suba los APK al portal):
 
 ```powershell
@@ -249,6 +267,19 @@ Ver la huella del certificado: `keytool -list -v -keystore android/keystore/iptv
 - Código: `lib/services/app_update.dart` (consulta y reglas), `apk_downloader.dart`, `apk_installer.dart`,
   `lib/providers/app_update_provider.dart`, `lib/widgets/app_update_widgets.dart` y en Android `src/portal/`.
 
+## TV box: abrir al encender el equipo (versión portal)
+
+- `android/app/src/portal/.../BootReceiver.kt` recibe `BOOT_COMPLETED` (y `QUICKBOOT_POWERON` de algunos fabricantes) y
+  abre la app **solo si el equipo es TV** (modo de interfaz TV, `leanback` o `television`).
+- Android 10+ solo lo permite con **"Mostrar sobre otras apps"** (`SYSTEM_ALERT_WINDOW`); sin ese permiso no hace nada.
+  En Android 9 o anterior funciona sin permiso. Android solo avisa del arranque a apps que se abrieron al menos una vez.
+- La primera vez que se entra en un TV box sin el permiso, la app lo explica con **Permitir / Ahora no** (una sola vez por
+  equipo). En *Cuenta* aparece "Abrir al encender el equipo: **Activo** / **Falta permiso**" con **Permitir**. Si el equipo
+  no tiene la pantalla del permiso se abren los datos de la app (o los Ajustes) y se avisa que algunos equipos no lo
+  permiten. No hay opción para apagarlo.
+- La versión *play* no lleva el receptor ni esos permisos (`src/play/.../AutoStartChannel.kt` responde "no disponible").
+- Canal `iptv_player/autostart`: `isTv`, `sdkInt`, `canDrawOverlays`, `hasOverlaySettings`, `openOverlaySettings`.
+
 ## Estructura
 
 ```
@@ -261,12 +292,15 @@ lib/
                         content_source (Xtream/M3U), storage, device (cabeceras y ventana),
                         server_discovery (buscar el portal en la red), native_network (máscara real en Android),
                         portal_relocator y server_endpoint (reencontrar el portal), distribution (play/portal),
-                        app_update, apk_downloader, apk_installer (actualizador)
+                        app_update, apk_downloader, apk_installer (actualizador),
+                        content_sections (secciones por cliente), channel_zapping (números de canal),
+                        auto_start (abrir al encender el TV box)
   providers/            perfiles, sesión, biblioteca (favoritos/recientes), portal, actualizaciones
   screens/              perfiles, inicio, en vivo, catálogo, detalles, reproductor, buscar, mensajes, cuenta
   widgets/              FocusableCard (foco para control remoto), tarjetas, EPG, avisos del portal, actualización
 android/app/src/play/   Versión Google Play (sin actualizador)
-android/app/src/portal/ Versión portal: permiso de instalación, canal nativo y proveedor del APK
+android/app/src/portal/ Versión portal: permiso de instalación, canal nativo y proveedor del APK,
+                        BootReceiver y AutoStartChannel (abrir al encender)
 scripts/                publicar.ps1 (compilar y subir al portal), clave-para-play.ps1 (llave para Play)
 android/app/src/main/   NetworkInfoChannel.kt (redes con máscara y puerta de enlace)
 test/                   Parser M3U, modelos Xtream, EPG, avisos, descubrimiento, reconexión, actualizaciones y descarga

@@ -22,6 +22,10 @@ abstract class ContentSource {
   /// Todos los ítems del tipo (en caché tras la primera carga).
   Future<List<MediaItem>> items(ContentType type);
 
+  /// Si hay contenido del tipo. No descarga la lista completa si no hace falta
+  /// (Xtream: primero las categorías; la lista solo si no hay ninguna).
+  Future<bool> hasContent(ContentType type);
+
   Future<MovieDetail> movieDetail(MediaItem item);
   Future<SeriesDetail> seriesDetail(MediaItem item);
   Future<List<EpgEntry>> shortEpg(MediaItem item);
@@ -116,6 +120,13 @@ class XtreamSource extends ContentSource {
       }
       return list;
     });
+  }
+
+  @override
+  Future<bool> hasContent(ContentType type) async {
+    final cats = await _rawCategories(type);
+    if (cats.isNotEmpty) return true;
+    return (await items(type)).isNotEmpty;
   }
 
   @override
@@ -224,6 +235,11 @@ class M3uSource extends ContentSource {
 
   @override
   Future<List<MediaItem>> items(ContentType type) async => data.itemsOf(type);
+
+  @override
+  Future<bool> hasContent(ContentType type) async => data
+      .itemsOf(type == ContentType.episode ? ContentType.series : type)
+      .isNotEmpty;
 
   @override
   Future<MovieDetail> movieDetail(MediaItem item) async =>

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../models/media_item.dart';
 import '../providers/session_provider.dart';
+import '../services/content_sections.dart';
 import '../services/device.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -29,12 +30,28 @@ class _SearchScreenState extends State<SearchScreen> {
   Map<ContentType, List<MediaItem>> _results = {};
   String _query = '';
 
+  /// Secciones que ve el cliente: solo se descarga y se busca en ellas.
+  late ContentSections _sections;
+
   static const _limit = 80;
 
   @override
   void initState() {
     super.initState();
+    _sections = readSections(context);
     _loadCatalog();
+  }
+
+  /// El portal cambió las secciones en plena sesión.
+  void _onSectionsChanged(ContentSections sections) {
+    if (sections == _sections) return;
+    _sections = sections;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _catalog.removeWhere((type, _) => !_sections.allows(type));
+      _search(_query);
+      _loadCatalog();
+    });
   }
 
   @override
@@ -47,19 +64,19 @@ class _SearchScreenState extends State<SearchScreen> {
   Future<void> _loadCatalog() async {
     final source = context.read<SessionProvider>().source;
     if (source == null) return;
+    // Solo las secciones visibles que aún no se cargaron.
+    final types =
+        _sections.types.where((t) => !_catalog.containsKey(t)).toList();
+    if (types.isEmpty) return;
     setState(() {
       _loadingCatalog = true;
       _catalogError = null;
     });
-    final types = [
-      ContentType.live,
-      if (source.supportsMovies) ContentType.movie,
-      if (source.supportsSeries) ContentType.series,
-    ];
     final errors = <String>[];
     await Future.wait(types.map((t) async {
       try {
-        _catalog[t] = await source.items(t);
+        final items = await source.items(t);
+        if (_sections.allows(t)) _catalog[t] = items;
       } catch (e) {
         errors.add(t.label);
       }
@@ -80,22 +97,7 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   void _search(String text) {
-    final q = normalizeSearch(text.trim());
-    final results = <ContentType, List<MediaItem>>{};
-    if (q.length >= 2) {
-      final words = q.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
-      _catalog.forEach((type, items) {
-        final found = <MediaItem>[];
-        for (final item in items) {
-          final key = item.searchKey;
-          if (words.every(key.contains)) {
-            found.add(item);
-            if (found.length >= _limit) break;
-          }
-        }
-        results[type] = found;
-      });
-    }
+    final results = searchCatalog(_catalog, text, _sections, limit: _limit);
     if (!mounted) return;
     setState(() {
       _query = text.trim();
@@ -105,6 +107,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    _onSectionsChanged(watchSections(context));
     final total = _results.values.fold<int>(0, (a, b) => a + b.length);
     final narrow = MediaQuery.sizeOf(context).width < 600;
     final content = Column(
@@ -113,7 +116,7 @@ class _SearchScreenState extends State<SearchScreen> {
           padding: EdgeInsets.fromLTRB(narrow ? 12 : 20, 12, narrow ? 12 : 20, 4),
           child: TvTextField(
             controller: _controller,
-            label: 'Buscar canales, películas y series',
+            label: 'Buscar ${_sections.describe()}',
             autofocus: !Device.isTv,
             textInputAction: TextInputAction.search,
             prefixIcon: const Icon(Icons.search),

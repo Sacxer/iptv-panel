@@ -15,9 +15,22 @@ import '../widgets/focusable_card.dart';
 import '../widgets/media_cards.dart';
 import 'navigation.dart';
 
+/// Pide a TV en vivo mostrar y enfocar un canal (p. ej. al volver del reproductor).
+class ChannelFocusRequest extends ChangeNotifier {
+  String? channelKey;
+
+  void request(String key) {
+    channelKey = key;
+    notifyListeners();
+  }
+}
+
 /// TV en vivo: categorías + canales (con EPG ahora/después) + panel de información.
 class LiveScreen extends StatefulWidget {
-  const LiveScreen({super.key});
+  /// Canal a enfocar cuando se pida (opcional).
+  final ChannelFocusRequest? focusRequest;
+
+  const LiveScreen({super.key, this.focusRequest});
 
   @override
   State<LiveScreen> createState() => _LiveScreenState();
@@ -34,17 +47,83 @@ class _LiveScreenState extends State<LiveScreen> {
   MediaItem? _focused;
   Timer? _catDebounce;
 
+  // Canal pedido por [LiveScreen.focusRequest]: la fila [_requestIndex] de la categoría
+  // [_requestCat] usa [_requestNode].
+  final ScrollController _scroll = ScrollController();
+  final FocusNode _requestNode = FocusNode(debugLabel: 'live_requested');
+  String? _pendingKey;
+  String? _requestCat;
+  int? _requestIndex;
+
   @override
   void initState() {
     super.initState();
+    widget.focusRequest?.addListener(_onFocusRequest);
     _load();
   }
 
   @override
+  void didUpdateWidget(LiveScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.focusRequest != widget.focusRequest) {
+      oldWidget.focusRequest?.removeListener(_onFocusRequest);
+      widget.focusRequest?.addListener(_onFocusRequest);
+    }
+  }
+
+  @override
   void dispose() {
+    widget.focusRequest?.removeListener(_onFocusRequest);
     _catDebounce?.cancel();
+    _scroll.dispose();
+    _requestNode.dispose();
     super.dispose();
   }
+
+  void _onFocusRequest() {
+    final key = widget.focusRequest?.channelKey;
+    if (key == null || !mounted) return;
+    _pendingKey = key;
+    _applyFocusRequest();
+  }
+
+  /// Muestra el canal pedido en la lista (en "Todos" si no está en la categoría) y lo enfoca.
+  void _applyFocusRequest() {
+    final key = _pendingKey;
+    if (key == null || _loading || _error != null) return;
+    var index = _filtered.indexWhere((c) => c.key == key);
+    if (index < 0 && _selectedCat != MediaCategory.allId) {
+      final all = filterByCategory(_all, MediaCategory.allId);
+      index = all.indexWhere((c) => c.key == key);
+      if (index >= 0) {
+        _selectedCat = MediaCategory.allId;
+        _filtered = all;
+      }
+    }
+    if (index < 0) {
+      _pendingKey = null;
+      return;
+    }
+    setState(() {
+      _requestCat = _selectedCat;
+      _requestIndex = index;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_scroll.hasClients) {
+        final target = (index - 2) * _rowExtent;
+        _scroll.jumpTo(
+            target.clamp(0.0, _scroll.position.maxScrollExtent).toDouble());
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _pendingKey != key) return;
+        _pendingKey = null;
+        if (_requestNode.context != null) _requestNode.requestFocus();
+      });
+    });
+  }
+
+  static const double _rowExtent = 78;
 
   Future<void> _load({bool refresh = false}) async {
     final session = context.read<SessionProvider>();
@@ -71,6 +150,7 @@ class _LiveScreenState extends State<LiveScreen> {
         _loading = false;
         _error = null;
       });
+      if (_pendingKey != null) _applyFocusRequest();
     } catch (e) {
       if (!mounted) return;
       if (refresh) {
@@ -105,14 +185,19 @@ class _LiveScreenState extends State<LiveScreen> {
             ])
           : ListView.builder(
               key: PageStorageKey('live_$_selectedCat'),
+              controller: _scroll,
               physics: const AlwaysScrollableScrollPhysics(),
               padding: EdgeInsets.all(wide ? 10 : 6),
               itemCount: _filtered.length,
-              itemExtent: 78,
+              itemExtent: _rowExtent,
               itemBuilder: (context, i) {
                 final item = _filtered[i];
                 return ChannelTile(
                   item: item,
+                  focusNode:
+                      (_requestCat == _selectedCat && _requestIndex == i)
+                          ? _requestNode
+                          : null,
                   onFocus: wide ? () => setState(() => _focused = item) : null,
                   onTap: () => _play(i),
                   onLongPress: () => toggleFavoriteWithSnack(context, item),
@@ -215,6 +300,7 @@ class ChannelTile extends StatelessWidget {
   final VoidCallback? onLongPress;
   final bool autofocus;
   final bool highlighted;
+  final FocusNode? focusNode;
 
   const ChannelTile({
     super.key,
@@ -224,6 +310,7 @@ class ChannelTile extends StatelessWidget {
     this.highlighted = false,
     this.onFocus,
     this.onLongPress,
+    this.focusNode,
   });
 
   @override
@@ -236,6 +323,7 @@ class ChannelTile extends StatelessWidget {
         onTap: onTap,
         onLongPress: onLongPress,
         autofocus: autofocus,
+        focusNode: focusNode,
         selected: highlighted,
         onFocusChange: (f) {
           if (f) onFocus?.call();

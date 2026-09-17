@@ -23,11 +23,12 @@ class DashboardScreen extends StatelessWidget {
     final library = context.watch<LibraryProvider>();
     final portal = context.watch<PortalProvider>();
     final session = context.watch<SessionProvider>();
-    final source = session.source;
+    // Solo lo que ve el cliente: lo demás no aparece ni en recientes ni en favoritos.
+    final sections = watchSections(context);
     final narrow = MediaQuery.sizeOf(context).width < 600;
 
-    final recents = library.recents;
-    final favs = library.favorites;
+    final recents = sections.filter(library.recents);
+    final favs = sections.filter(library.favorites);
     final recentLive = recents.where((e) => e.type == ContentType.live).toList();
     final continueVod = recents.where((e) => e.isVod).toList();
     final favLive = favs.where((e) => e.type == ContentType.live).toList();
@@ -39,10 +40,9 @@ class DashboardScreen extends StatelessWidget {
     final daysLeft = exp?.difference(DateTime.now()).inDays;
 
     final quick = <(IconData, String, String)>[
-      (Icons.live_tv_rounded, 'TV en vivo', 'live'),
-      if (source?.supportsMovies ?? false) (Icons.movie_outlined, 'Películas', 'movies'),
-      if (source?.supportsSeries ?? false)
-        (Icons.video_library_outlined, 'Series', 'series'),
+      if (sections.live) (Icons.live_tv_rounded, 'TV en vivo', 'live'),
+      if (sections.movies) (Icons.movie_outlined, 'Películas', 'movies'),
+      if (sections.series) (Icons.video_library_outlined, 'Series', 'series'),
       (Icons.search_rounded, 'Buscar', 'search'),
     ];
 
@@ -137,12 +137,12 @@ class DashboardScreen extends StatelessWidget {
             onOpen: (i, l) => openMediaItem(context, i, l),
           ),
           if (recents.isEmpty && favs.isEmpty)
-            const Padding(
-              padding: EdgeInsets.only(top: 40),
+            Padding(
+              padding: const EdgeInsets.only(top: 40),
               child: EmptyView(
                 icon: Icons.tv_rounded,
                 message:
-                    'Empieza a ver canales, películas o series.\nTus recientes y favoritos aparecerán aquí.',
+                    'Empieza a ver ${sections.describe(conjunction: 'o')}.\nTus recientes y favoritos aparecerán aquí.',
               ),
             ),
           const SizedBox(height: 24),

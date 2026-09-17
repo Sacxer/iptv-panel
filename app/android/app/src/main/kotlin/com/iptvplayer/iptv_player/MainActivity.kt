@@ -10,5 +10,7 @@ class MainActivity : FlutterActivity() {
         NetworkInfoChannel.register(this, flutterEngine)
         // Cada distribución agrega lo suyo (src/play o src/portal).
         FlavorSetup.configure(this, flutterEngine)
+        // Abrir al encender el TV box: solo la versión portal (en play responde "no disponible").
+        AutoStartChannel.register(this, flutterEngine)
     }
 }
