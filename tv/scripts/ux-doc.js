@@ -8,7 +8,7 @@
  * porque lleva la cuenta de prueba.
  *
  * Opciones:
- *   --test-user / --test-pass   cuenta de prueba (se pueden repetir para varias cuentas, en el mismo orden)
+ *   --test-user / --test-pass   cuenta de prueba (se pueden repetir; sin --test-pass la clave va solo en Seller Lounge → Test Info)
  *   --screens N                 pantallas simultáneas de cada cuenta de prueba (por defecto 3)
  *   --review-url URL            dirección pública que usarán los revisores (por defecto la última de serverUrls)
  *   --tested-on "texto"         televisores en los que se probó (ej. "LG 43UR7800 (webOS 23)")
@@ -43,7 +43,7 @@ function parseArgs(argv) {
     else if (a === '--preview') o.preview = path.resolve(next());
     else throw new Error(`Opción desconocida: ${a}`);
   }
-  if (o.users.length !== o.passes.length) throw new Error('Cada --test-user necesita su --test-pass');
+  if (o.passes.length > o.users.length) throw new Error('Cada --test-pass necesita su --test-user');
   return o;
 }
 
@@ -94,8 +94,10 @@ function build(opts) {
     return PENDING(label);
   };
 
+  // Sin --test-pass la contraseña se indica solo en Seller Lounge → Test Info (no queda escrita en el documento)
   const accounts = opts.users.length
-    ? opts.users.map((u, i) => `<tr><td>${i + 1}</td><td><code>${esc(u)}</code></td><td><code>${esc(opts.passes[i])}</code></td><td>${opts.screens}</td></tr>`).join('')
+    ? opts.users.map((u, i) => `<tr><td>${i + 1}</td><td><code>${esc(u)}</code></td><td>${opts.passes[i]
+      ? `<code>${esc(opts.passes[i])}</code>` : 'Entered in Seller Lounge → Test Info'}</td><td>${opts.screens}</td></tr>`).join('')
     : `<tr><td>1</td><td>${need('', 'test username')}</td><td>${PENDING('test password')}</td><td>${opts.screens}</td></tr>`;
 
   const basic = [
@@ -108,7 +110,7 @@ function build(opts) {
     ['', 'Service Area Information', 'Colombia (CO)'],
     ['', 'App Service Language', 'Spanish'],
     ['', 'Geo-IP Block', 'No'],
-    ['', 'SDK Version', `webOS TV (web app, ES5). Tested on: ${need(opts.testedOn, 'TV model and webOS version used for testing')}`],
+    ['', 'SDK Version', `webOS TV 4.0 or later (web app, ES5)${opts.testedOn ? `. Tested on: ${esc(opts.testedOn)}` : ''}`],
     ['', 'In-App Ad', 'Not Applicable'],
     ['', 'Paid Content', 'Subscription (contracted directly with the operator outside the app; there is no payment or sign-up inside the app)'],
     ['', 'Sound (For Game Type)', 'Not Applicable'],
@@ -181,7 +183,7 @@ function build(opts) {
     <li>The app connects automatically to the operator's server. For QA it uses the public address ${need(reviewUrl, 'public server address for QA')}. No VPN is needed and there is no Geo-IP block.</li>
     <li>How to sign in: on the first screen select ${es('Usuario')} (Username) and ${es('Contraseña')} (Password), press OK to type with the TV keyboard, then select ${es('Ingresar')} (Sign in).</li>
     <li>The session is kept after closing the app or restarting the TV. To sign out: ${es('Cuenta')} (Account) → ${es('Cambiar de perfil')} (Switch profile), then delete the profile if desired.</li>
-    <li>The test accounts only give access to the operator's own test content.</li>
+    <li>The test accounts only give access to demo content: open movies of the Blender Foundation (Creative Commons Attribution) and demo channels that replay them. The screenshots in this document show sample content.</li>
   </ul>
 </section>`);
 
@@ -278,7 +280,7 @@ function build(opts) {
     { box: [1202, 555, 1878, 637], text: `${es('Cambiar de perfil')} Sign out / switch profile.` },
     { box: [1202, 643, 1878, 725], text: `${es('Editar este perfil')} Edit the profile name and credentials.` },
     { box: [1202, 731, 1878, 813], text: `${es('Salir de la aplicación')} Exit the app (with confirmation).` },
-  ], `<p>Privacy policy: ${need(privacy, 'privacy policy URL')}. Support: ${need(contact, 'support e-mail or phone')}.</p>`));
+  ], `<p>Privacy policy: ${need(privacy, 'privacy policy URL')}. Support: ${contact ? esc(contact) : 'the contact e-mail shown in the store listing'}.</p>`));
 
   pages.push(screenPage('6. Sub Page Description', '9. Exit Confirmation', 'ux-salir', [
     { box: [596, 378, 1324, 702], text: `${es('¿Desea salir de ...?')} Do you want to exit? Shown when pressing Back on the main menu or selecting ${es('Salir de la aplicación')}.` },
