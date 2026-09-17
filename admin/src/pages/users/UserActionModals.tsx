@@ -4,11 +4,12 @@ import { Info, MonitorSmartphone, Unplug } from 'lucide-react';
 import { api, asList, errorMessage } from '../../api';
 import { Modal } from '../../components/Modal';
 import { PackageChecklist } from '../../components/PackageChecklist';
+import { ContentSectionsField } from '../../components/ContentSectionsField';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/Toast';
 import { Alert, CopyButton, CopyField, EmptyState, ErrorState, FormField, PageLoader, Select, Spinner } from '../../components/ui';
 import { useAsync } from '../../hooks/useAsync';
-import type { Package, TimeUnit, User } from '../../types';
+import type { ContentSection, Package, TimeUnit, User } from '../../types';
 import { DeviceIcon } from '../../components/DeviceIcon';
 import { Badge } from '../../components/ui';
 import { DEVICE_INVENTORY, DEVICE_OWNERSHIP, DEVICE_TYPE_LABEL } from '../../utils/labels';
@@ -253,6 +254,61 @@ export function AssignPackagesModal({
         Los paquetes seleccionados <strong>reemplazan</strong> los que tengan actualmente los clientes.
       </Alert>
       <PackageChecklist packages={packages} value={ids} onChange={setIds} />
+    </Modal>
+  );
+}
+
+// ---------- Contenido que ve el cliente (masivo) ----------
+
+export function ContentSectionsModal({
+  open,
+  count,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  count: number;
+  onClose: () => void;
+  onConfirm: (sections: ContentSection[]) => Promise<void>;
+}) {
+  const [sections, setSections] = useState<ContentSection[]>([]);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (open) setSections([]);
+  }, [open]);
+
+  const clients = `${count} cliente${count === 1 ? '' : 's'}`;
+  const submit = async () => {
+    setBusy(true);
+    try {
+      await onConfirm(sections);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={open}
+      title={`Contenido que ve${count === 1 ? '' : 'n'} ${clients}`}
+      onClose={onClose}
+      dismissible={!busy}
+      onSubmit={() => void submit()}
+      footer={
+        <>
+          <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>
+            Cancelar
+          </button>
+          <button type="submit" className="btn btn-primary" disabled={busy || count === 0}>
+            {busy && <Spinner size={14} />} Aplicar a {clients}
+          </button>
+        </>
+      }
+    >
+      <Alert tone="amber" icon={<Info size={18} />}>
+        Lo que elijas <strong>reemplaza</strong> lo que tenga{count === 1 ? ' ahora el cliente seleccionado' : `n ahora los ${clients} seleccionados`}.
+      </Alert>
+      <ContentSectionsField value={sections} onChange={setSections} disabled={busy} />
     </Modal>
   );
 }

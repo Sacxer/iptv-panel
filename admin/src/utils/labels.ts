@@ -13,6 +13,7 @@ import type {
   DeviceSource,
   DeviceType,
   CategoryType,
+  ContentSection,
   ContentSource,
   JobStatus,
   NoticeDisplay,
@@ -43,6 +44,21 @@ export const CATEGORY_TYPE_LABEL: Record<CategoryType, string> = {
   movie: 'Películas',
   series: 'Series',
 };
+
+/** Secciones de las apps que se pueden elegir por cliente (en el orden en que las guarda el servidor). */
+export const CONTENT_SECTIONS: { value: ContentSection; label: string; short: string }[] = [
+  { value: 'live', label: 'Canales en vivo', short: 'TV' },
+  { value: 'movies', label: 'Películas', short: 'Películas' },
+  { value: 'series', label: 'Series', short: 'Series' },
+];
+
+/** Secciones elegidas a mano en texto («TV · Series», o largo «Canales en vivo, Series»). Vacío = automático. */
+export function contentSectionsText(sections: ContentSection[] | null | undefined, long = false): string {
+  const chosen = new Set(sections ?? []);
+  return CONTENT_SECTIONS.filter((c) => chosen.has(c.value))
+    .map((c) => (long ? c.label : c.short))
+    .join(long ? ', ' : ' · ');
+}
 
 export const ROLE_LABEL: Record<Role, string> = {
   admin: 'Administrador',

@@ -6,6 +6,7 @@ import {
   Ban,
   CalendarPlus,
   KeyRound,
+  MonitorPlay,
   Package as PackageIcon,
   Pencil,
   Play,
@@ -31,9 +32,11 @@ import { SourceBadge, StatusBadge } from '../../components/StatusBadge';
 import { Badge, ChipGroup, PageHeader, Select } from '../../components/ui';
 import type { TimeUnit, User, UserBulkInput, UserSource, UserStatusFilter } from '../../types';
 import { daysUntil, formatDate, formatDateTime, formatNumber, relativeExpiry } from '../../utils/format';
+import { contentSectionsText } from '../../utils/labels';
 import {
   AssignPackagesModal,
   ClientDevicesModal,
+  ContentSectionsModal,
   ExtendModal,
   SuspendModal,
   UserAccessModal,
@@ -132,6 +135,7 @@ export function UsersPage() {
   const [suspendTarget, setSuspendTarget] = useState<Target | null>(null);
   const [extendTarget, setExtendTarget] = useState<Target | null>(null);
   const [assignOpen, setAssignOpen] = useState(false);
+  const [contentOpen, setContentOpen] = useState(false);
 
   const refresh = () => void list.reload(true);
 
@@ -348,12 +352,25 @@ export function UsersPage() {
       hideOnMobile: true,
       render: (u) => {
         const names = (u.package_ids ?? []).map((id) => packageById.get(id)?.name ?? `#${id}`);
-        if (names.length === 0) return <span className="muted">—</span>;
+        const packagesCell =
+          names.length === 0 ? (
+            <span className="muted">—</span>
+          ) : (
+            <span title={names.join(', ')}>
+              {names.slice(0, 2).join(', ')}
+              {names.length > 2 && <span className="muted"> +{names.length - 2}</span>}
+            </span>
+          );
+        // Secciones elegidas a mano: se indican debajo; si es automático no se muestra nada.
+        const sections = contentSectionsText(u.content_sections);
+        if (!sections) return packagesCell;
         return (
-          <span title={names.join(', ')}>
-            {names.slice(0, 2).join(', ')}
-            {names.length > 2 && <span className="muted"> +{names.length - 2}</span>}
-          </span>
+          <div className="cell-main">
+            {packagesCell}
+            <span className="text-xs text-blue" title={`Contenido elegido a mano: solo ve ${contentSectionsText(u.content_sections, true)}`}>
+              Solo {sections}
+            </span>
+          </div>
         );
       },
     },
@@ -511,6 +528,9 @@ export function UsersPage() {
         <button type="button" className="btn btn-secondary btn-sm" onClick={() => setAssignOpen(true)}>
           <PackageIcon size={14} /> Asignar paquetes
         </button>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setContentOpen(true)}>
+          <MonitorPlay size={14} /> Contenido…
+        </button>
         <button type="button" className="btn btn-danger-ghost btn-sm" onClick={() => void bulkConfirm('delete')}>
           <Trash2 size={14} /> Eliminar
         </button>
@@ -592,6 +612,20 @@ export function UsersPage() {
         onConfirm={async (ids) => {
           await runBulk({ action: 'set_packages', package_ids: ids }, selectedIds, 'Paquetes asignados');
           setAssignOpen(false);
+        }}
+      />
+      <ContentSectionsModal
+        open={contentOpen}
+        count={selected.size}
+        onClose={() => setContentOpen(false)}
+        onConfirm={async (sections) => {
+          const text = contentSectionsText(sections, true);
+          await runBulk(
+            { action: 'set_content', content_sections: sections },
+            selectedIds,
+            text ? `Contenido actualizado: solo ${text}` : 'Contenido en automático, según sus paquetes',
+          );
+          setContentOpen(false);
         }}
       />
     </>

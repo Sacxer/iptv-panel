@@ -788,6 +788,8 @@ input[type='datetime-local'].input { color-scheme: inherit; }
 .checklist-item.is-checked { border-color: var(--primary); background: var(--primary-soft); }
 .checklist-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .checklist-meta { grid-column: 2; font-size: 11px; color: var(--text-muted); }
+/* Pocas opciones cortas (p. ej. Canales en vivo / Películas / Series): caben en una fila */
+.checklist-items-sm { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 
 /* ---------- Selector de contenido ---------- */
 .picker-toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }

@@ -4,9 +4,10 @@ import { api, errorMessage } from '../../api';
 import { Modal } from '../../components/Modal';
 import { DateTimeInput } from '../../components/DateTimeInput';
 import { PackageChecklist } from '../../components/PackageChecklist';
+import { ContentSectionsField } from '../../components/ContentSectionsField';
 import { Alert, Checkbox, FormField, Select, Spinner, Switch } from '../../components/ui';
 import { useToast } from '../../components/Toast';
-import type { AdminAccount, Package, TimeUnit, User, UserInput } from '../../types';
+import type { AdminAccount, ContentSection, Package, TimeUnit, User, UserInput } from '../../types';
 import { addToUnix, formatDateTime, generatePassword, generateUsername, isValidEmail, nowUnix } from '../../utils/format';
 import { ROLE_LABEL } from '../../utils/labels';
 
@@ -40,6 +41,7 @@ interface FormState {
   max_connections: string;
   is_trial: boolean;
   package_ids: number[];
+  content_sections: ContentSection[];
   notes: string;
   enabled: boolean;
   owner_id: string;
@@ -71,6 +73,7 @@ function initialState(user: User | null): FormState {
       max_connections: String(user.max_connections ?? 1),
       is_trial: user.is_trial,
       package_ids: user.package_ids ?? [],
+      content_sections: user.content_sections ?? [],
       notes: user.notes ?? '',
       enabled: user.enabled,
       owner_id: user.owner_id !== null && user.owner_id !== undefined ? String(user.owner_id) : '',
@@ -92,6 +95,7 @@ function initialState(user: User | null): FormState {
     max_connections: '1',
     is_trial: false,
     package_ids: [],
+    content_sections: [],
     notes: '',
     enabled: true,
     owner_id: '',
@@ -156,6 +160,7 @@ export function UserFormModal({ open, user, packages, packagesLoading, admins, i
       max_connections: Number(form.max_connections),
       is_trial: form.is_trial,
       package_ids: form.package_ids,
+      content_sections: form.content_sections,
       notes: form.notes,
       enabled: form.enabled,
       document_id: form.document_id.trim(),
@@ -410,6 +415,9 @@ export function UserFormModal({ open, user, packages, packagesLoading, admins, i
         onChange={(ids) => set('package_ids', ids)}
         emptyHint="No hay paquetes. Según los ajustes, un cliente sin paquetes puede ver todo el contenido o nada."
       />
+
+      <h3 className="form-section-title">Contenido que ve el cliente</h3>
+      <ContentSectionsField value={form.content_sections} onChange={(v) => set('content_sections', v)} disabled={saving} />
 
       <h3 className="form-section-title">Notas</h3>
       <FormField>

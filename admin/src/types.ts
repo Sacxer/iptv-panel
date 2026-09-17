@@ -43,6 +43,8 @@ export interface Duration {
 export type UserStatus = 'active' | 'expired' | 'suspended' | 'disabled';
 export type UserStatusFilter = UserStatus | 'expiring' | 'trial';
 export type UserSource = 'local' | 'xtreamui';
+/** Secciones de las apps: canales en vivo, películas y series. */
+export type ContentSection = 'live' | 'movies' | 'series';
 
 export interface User {
   id: number;
@@ -71,6 +73,8 @@ export interface User {
   source: UserSource;
   xtream_id: number | null;
   package_ids: number[];
+  /** Secciones que ve el cliente en las apps. Vacío = automático (según sus paquetes). */
+  content_sections: ContentSection[];
   active_connections: number;
   /** Número de dispositivos del cliente. */
   device_count?: number;
@@ -89,6 +93,8 @@ export interface UserInput {
   max_connections?: number;
   is_trial?: boolean;
   package_ids?: number[];
+  /** [] = automático (según sus paquetes). */
+  content_sections?: ContentSection[];
   notes?: string;
   full_name?: string;
   email?: string;
@@ -120,7 +126,8 @@ export type UserBulkAction =
   | 'reactivate'
   | 'delete'
   | 'extend'
-  | 'set_packages';
+  | 'set_packages'
+  | 'set_content';
 
 export interface UserBulkInput {
   ids: number[];
@@ -129,6 +136,8 @@ export interface UserBulkInput {
   amount?: number;
   unit?: TimeUnit;
   package_ids?: number[];
+  /** Para `set_content`: [] = automático (según sus paquetes). */
+  content_sections?: ContentSection[];
 }
 
 export interface UserAccess {
