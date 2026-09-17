@@ -615,6 +615,14 @@ test('session: aplica la dirección nueva a la fuente, al portal y al perfil', a
   IPTV.device.id = 'TV-1';
   assert.equal(src.urlFor({ type: 'episode', id: '7', ext: 'mkv' }), 'http://nueva:25461/series/u/p/7.mkv?did=TV-1', 'con el portal: ID del equipo');
   IPTV.portal.enabled = false;
+  const ch = { type: 'live', id: '9' };
+  const firstExt = IPTV.util.urlExt(src.urlFor(ch));
+  const other = firstExt === 'ts' ? 'm3u8' : 'ts';
+  src.rememberFormat(ch, other);
+  assert.equal(IPTV.util.urlExt(src.urlFor(ch)), other, 'recuerda el formato que funcionó en ese canal');
+  assert.equal(IPTV.util.urlExt(src.urlFor({ type: 'live', id: '10' })), firstExt, 'los demás canales no cambian');
+  src.rememberFormat({ type: 'movie', id: '9' }, 'mp4');
+  assert.equal(IPTV.util.urlExt(src.urlFor(ch)), other);
   assert.equal(IPTV.portal.server, 'http://nueva:25461');
   assert.equal(global.lastToast, 'Servidor encontrado en la nueva dirección');
   assert.equal(IPTV.storage.getProfile('p1').server, 'http://nueva:25461');

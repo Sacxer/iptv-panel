@@ -505,7 +505,10 @@
     });
 
     P.on('state', function (st) {
-      if (st === 'playing') { heartbeatFor(App.playingItem); }
+      if (st === 'playing') {
+        heartbeatFor(App.playingItem);
+        if (App.playingItem && App.source && App.source.rememberFormat) { App.source.rememberFormat(App.playingItem, U.urlExt(P.currentUrl)); }
+      }
       if (st === 'stopped') {
         doc.documentElement.classList.remove('video-on');
         App.playingItem = null;

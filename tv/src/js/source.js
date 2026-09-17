@@ -81,6 +81,7 @@
     this.pass = profile.password;
     this.auth = null;
     this.hasSeriesInfo = true;
+    this._fmt = {};
   }
   baseMethods(XtreamSource.prototype);
 
@@ -273,10 +274,11 @@
     }, 10000);
   };
 
-  XtreamSource.prototype.liveExt = function () {
+  XtreamSource.prototype.liveExt = function (item) {
     var pref = IPTV.storage.getSettings().liveFormat;
     var formats = (this.auth && this.auth.user.formats) || [];
     if (pref === 'ts' || pref === 'm3u8') { return pref; }
+    if (item && this._fmt[item.id]) { return this._fmt[item.id]; }
     if (formats.length && formats.indexOf('ts') < 0 && formats.indexOf('m3u8') >= 0) { return 'm3u8'; }
     if (IPTV.platform === 'browser' && !root.mpegts && root.Hls) { return 'm3u8'; }
     return 'ts';
@@ -285,7 +287,7 @@
   XtreamSource.prototype.urlFor = function (item) {
     var url;
     switch (item.type) {
-      case 'live': url = X.liveUrl(this.server, this.user, this.pass, item.id, this.liveExt()); break;
+      case 'live': url = X.liveUrl(this.server, this.user, this.pass, item.id, this.liveExt(item)); break;
       case 'movie': url = X.movieUrl(this.server, this.user, this.pass, item.id, item.ext); break;
       case 'episode': url = X.episodeUrl(this.server, this.user, this.pass, item.id, item.ext); break;
       default: return item.url || '';
@@ -296,6 +298,11 @@
   };
 
   XtreamSource.prototype.altUrl = function (url) { return X.altLiveUrl(url); };
+
+  /* Formato (.ts / .m3u8) con el que un canal sí se vio: la próxima vez se abre directo, sin el intento fallido */
+  XtreamSource.prototype.rememberFormat = function (item, ext) {
+    if (item && item.type === 'live' && (ext === 'ts' || ext === 'm3u8')) { this._fmt[item.id] = ext; }
+  };
 
   /* =================== M3U =================== */
   function M3USource(profile) {
