@@ -18,12 +18,31 @@ import { useAsync } from '../../hooks/useAsync';
 import { useToast } from '../../components/Toast';
 import { Alert, Badge, CopyButton, ErrorState, PageHeader, PageLoader, Spinner, Switch } from '../../components/ui';
 import type { UpdatesOverview, UpdatesSettings } from '../../types';
-import { formatDateTime, formatNumber, timeAgo } from '../../utils/format';
+import { formatDate, formatDateTime, formatNumber, timeAgo } from '../../utils/format';
 
 import { UPDATES_CHANGED_EVENT } from './events';
 import { AppCard, useUpdates } from './appUpdates';
 
 const notifyUpdatesChanged = () => window.dispatchEvent(new Event(UPDATES_CHANGED_EVENT));
+
+/** Fecha AAAA-MM-DD del registro de cambios (al mediodía local, para que no cambie de día por la zona horaria). */
+const dayToUnix = (day: string) => Math.floor(new Date(`${day}T12:00:00`).getTime() / 1000);
+
+type PanelChange = { sha: string; message: string; date: number | null };
+
+function ChangeList({ changes }: { changes: PanelChange[] }) {
+  return (
+    <ul className="upd-changes">
+      {changes.map((ch) => (
+        <li key={ch.sha}>
+          <span className="mono text-xs muted">{ch.sha.slice(0, 7)}</span>
+          <span className="upd-change-msg">{ch.message}</span>
+          {ch.date && <span className="muted text-xs nowrap">{formatDateTime(ch.date)}</span>}
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export function VersionPage() {
   const releases = useAsync(async () => api.appReleases.list().catch(() => null), []);
@@ -124,20 +143,38 @@ function PanelCard({ overview }: { overview: UpdatesOverview }) {
           <div className="upd-available-head">
             <CloudDownload size={18} />
             <strong>Hay una actualización del panel</strong>
-            {p.latest_version && <Badge tone="amber">v{p.latest_version}</Badge>}
+            {p.latest_version && (
+              <Badge tone="amber">
+                {p.latest_version !== p.current_version ? `v${p.current_version} → v${p.latest_version}` : `v${p.latest_version}`}
+              </Badge>
+            )}
             {p.commits_behind ? <span className="muted text-sm">{p.commits_behind === 1 ? '1 cambio nuevo' : `${formatNumber(p.commits_behind)} cambios nuevos`}</span> : null}
           </div>
-          {p.changes.length > 0 && (
-            <ul className="upd-changes">
-              {p.changes.map((ch) => (
-                <li key={ch.sha}>
-                  <span className="mono text-xs muted">{ch.sha.slice(0, 7)}</span>
-                  <span className="upd-change-msg">{ch.message}</span>
-                  {ch.date && <span className="muted text-xs nowrap">{formatDateTime(ch.date)}</span>}
-                </li>
+          {(p.versions?.length ?? 0) > 0 && (
+            <div className="upd-versions">
+              {p.versions!.map((v) => (
+                <div key={v.version} className="upd-version">
+                  <div className="upd-version-head">
+                    <strong>Versión {v.version}</strong>
+                    {v.date && <span className="muted text-xs">{formatDate(dayToUnix(v.date))}</span>}
+                  </div>
+                  <ul className="upd-version-notes">
+                    {v.notes.map((n, i) => (
+                      <li key={i}>{n}</li>
+                    ))}
+                  </ul>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
+          {p.changes.length > 0 && ((p.versions?.length ?? 0) > 0 ? (
+            <details className="upd-details">
+              <summary className="text-sm">Detalle técnico ({formatNumber(p.changes.length)} {p.changes.length === 1 ? 'cambio' : 'cambios'})</summary>
+              <ChangeList changes={p.changes} />
+            </details>
+          ) : (
+            <ChangeList changes={p.changes} />
+          ))}
           {p.compare_url && (
             <a className="link text-sm" href={p.compare_url} target="_blank" rel="noreferrer">
               Ver todos los cambios en GitHub <ExternalLink size={12} />

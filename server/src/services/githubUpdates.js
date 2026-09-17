@@ -89,6 +89,42 @@ async function gh(apiPath, { raw = false } = {}) {
 
 const firstLine = (s) => String(s || '').split('\n')[0].slice(0, 200);
 
+/** Compara versiones x.y.z (1 si a > b, -1 si a < b, 0 si son iguales). */
+export function compareVersions(a, b) {
+  const pa = String(a || '').split(/[.+-]/).map((n) => Number.parseInt(n, 10) || 0);
+  const pb = String(b || '').split(/[.+-]/).map((n) => Number.parseInt(n, 10) || 0);
+  for (let i = 0; i < 3; i++) {
+    if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0) ? 1 : -1;
+  }
+  return 0;
+}
+
+/**
+ * Registro de cambios del panel (CAMBIOS.md en la raíz del repositorio):
+ *   ## 1.1.0 · 2026-09-17
+ *   - Novedad en lenguaje claro
+ * → [{ version, date, notes }], de la más nueva a la más vieja.
+ */
+export function parseChangelog(text) {
+  const out = [];
+  let current = null;
+  for (const line of String(text || '').split(/\r?\n/)) {
+    const head = /^##\s+v?(\d+\.\d+\.\d+)(?:\s*[·—–-]\s*(\d{4}-\d{2}-\d{2}))?/.exec(line);
+    if (head) {
+      current = { version: head[1], date: head[2] || null, notes: [] };
+      out.push(current);
+      continue;
+    }
+    if (/^#\s/.test(line)) {
+      current = null;
+      continue;
+    }
+    const item = /^\s*[-*]\s+(.+)$/.exec(line);
+    if (current && item) current.notes.push(item[1].trim().slice(0, 300));
+  }
+  return out.sort((x, y) => compareVersions(y.version, x.version));
+}
+
 function abiFromName(name) {
   const n = name.toLowerCase();
   if (n.includes('arm64')) return 'arm64-v8a';
@@ -107,6 +143,14 @@ async function checkPanel({ repo, branch, build }) {
     latestVersion = JSON.parse(Buffer.from(pkg?.content || '', 'base64').toString('utf8')).version || null;
   } catch { /* sin versión */ }
 
+  const log = await gh(`/repos/${repo}/contents/CAMBIOS.md?ref=${encodeURIComponent(branch)}`).catch(() => null);
+  let versions = [];
+  try {
+    versions = parseChangelog(Buffer.from(log?.content || '', 'base64').toString('utf8'))
+      .filter((v) => compareVersions(v.version, build.version) > 0)
+      .slice(0, 20);
+  } catch { /* sin registro de cambios */ }
+
   const panel = {
     current_version: build.version,
     current_commit: build.commit,
@@ -117,6 +161,8 @@ async function checkPanel({ repo, branch, build }) {
     update_available: null, // null = no se sabe de qué commit se instaló
     commits_behind: null,
     changes: [],
+    // Versiones más nuevas que la instalada, con sus novedades (CAMBIOS.md)
+    versions,
     install_command: `curl -fsSL https://raw.githubusercontent.com/${repo}/${branch}/install.sh | sudo bash`,
     compare_url: null,
   };

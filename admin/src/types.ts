@@ -866,6 +866,8 @@ export interface UpdatesOverview {
       update_available: boolean | null;
       commits_behind: number | null;
       changes: { sha: string; message: string; date: number | null }[];
+      /** Versiones más nuevas que la instalada (CAMBIOS.md), de la más nueva a la más vieja */
+      versions?: { version: string; date: string | null; notes: string[] }[];
       install_command: string | null;
       compare_url: string | null;
     } | null;

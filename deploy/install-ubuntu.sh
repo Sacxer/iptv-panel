@@ -474,12 +474,13 @@ done
 echo "  * = interfaz principal (puerta de enlace)"
 
 PUBLIC_IP="$(curl -fsS --max-time 4 https://api.ipify.org 2>/dev/null || true)"
+PANEL_VERSION="$(node -p "require('$APP_DIR/server/package.json').version" 2>/dev/null || true)"
 echo
 echo "╔══════════════════════════════════════════════════════════════╗"
 if (( FRESH )); then
-echo "   PORTAL IPTV INSTALADO"
+echo "   PORTAL IPTV INSTALADO${PANEL_VERSION:+ · versión ${PANEL_VERSION}}"
 else
-echo "   PORTAL IPTV ACTUALIZADO (datos conservados)"
+echo "   PORTAL IPTV ACTUALIZADO a la versión ${PANEL_VERSION:-nueva} (datos conservados)"
 fi
 echo "╠══════════════════════════════════════════════════════════════╣"
 echo "   Panel:       ${PANEL_URL}"

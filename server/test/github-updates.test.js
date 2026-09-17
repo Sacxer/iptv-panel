@@ -63,6 +63,15 @@ before(async () => {
     if (p === '/repos/Sacxer/iptv-panel/contents/server/package.json') {
       return json(200, { content: Buffer.from(JSON.stringify({ version: '1.1.0' })).toString('base64') });
     }
+    if (p === '/repos/Sacxer/iptv-panel/contents/CAMBIOS.md') {
+      const md = [
+        '# Cambios del panel', '', 'Texto de ayuda', '',
+        '## 99.0.0 · 2099-01-01', '- Versión grande', '',
+        '## 99.1.0 · 2099-02-01', '- Novedad uno', '- Novedad dos', '',
+        '## 0.9.0 · 2020-01-01', '- Vieja (ya instalada)', '',
+      ].join('\n');
+      return json(200, { content: Buffer.from(md).toString('base64') });
+    }
     if (p === '/repos/Sacxer/iptv-panel/compare/c1...c3') {
       return json(200, {
         ahead_by: 2, html_url: 'https://github.com/Sacxer/iptv-panel/compare/c1...c3',
@@ -109,6 +118,10 @@ describe('actualizaciones desde GitHub', () => {
     assert.equal(r.panel.update_available, true);
     assert.equal(r.panel.commits_behind, 2);
     assert.equal(r.panel.latest_version, '1.1.0');
+    assert.deepEqual(r.panel.versions, [
+      { version: '99.1.0', date: '2099-02-01', notes: ['Novedad uno', 'Novedad dos'] },
+      { version: '99.0.0', date: '2099-01-01', notes: ['Versión grande'] },
+    ], 'solo las más nuevas que la instalada, de la más nueva a la más vieja');
     assert.deepEqual(r.panel.changes.map((c) => c.message), ['Actualizaciones desde GitHub', 'Copias de seguridad']);
     assert.equal(r.panel.install_command, 'curl -fsSL https://raw.githubusercontent.com/Sacxer/iptv-panel/main/install.sh | sudo bash');
 
@@ -180,5 +193,19 @@ describe('actualizaciones desde GitHub', () => {
     assert.match(o.last.error, /limitó/);
     assert.equal(o.last.panel.update_available, false, 'conserva el último resultado bueno');
     fake.rateLimited = false;
+  });
+});
+
+describe('registro de cambios del panel', () => {
+  test('lee las versiones de CAMBIOS.md y las compara', async () => {
+    const { compareVersions, parseChangelog } = await import('../src/services/githubUpdates.js');
+    assert.equal(compareVersions('1.10.0', '1.9.9'), 1);
+    assert.equal(compareVersions('1.0.0', '1.0.0'), 0);
+    assert.equal(compareVersions('1.0', '1.0.1'), -1);
+    const fs2 = await import('node:fs');
+    const real = parseChangelog(fs2.readFileSync(new URL('../../CAMBIOS.md', import.meta.url), 'utf8'));
+    const pkg = JSON.parse(fs2.readFileSync(new URL('../package.json', import.meta.url)));
+    assert.equal(real[0].version, pkg.version, 'la versión del programa está anotada en CAMBIOS.md');
+    assert.ok(real.every((v) => v.notes.length > 0 && /^\d{4}-\d{2}-\d{2}$/.test(v.date)));
   });
 });
