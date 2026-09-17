@@ -16,7 +16,8 @@
  *   ux-buscar · ux-mensajes · ux-cuenta · ux-salir
  *
  * npm run shots -- --art   → además (o solo, sin --url) dibuja con letra normal la imagen de fondo de LG
- *   (assets/store/lg/background-1920x1080.png) con el nombre de operator.json → appName.
+ *   (assets/store/lg/background-1920x1080.png y la pantalla de inicio assets/icons/webos/splash.png) con el
+ *   nombre de operator.json → appName.
  */
 const fs = require('fs');
 const os = require('os');
@@ -107,9 +108,14 @@ async function renderArt(c) {
     await c.send('Page.navigate', { url: require('url').pathToFileURL(file).href });
     await sleep(1500);
     const png = await c.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: W, height: H, scale: 1 } });
-    const out = path.join(TV_DIR, 'assets', 'store', 'lg', 'background-1920x1080.png');
-    fs.writeFileSync(out, Buffer.from(png.data, 'base64'));
-    console.log(`Fondo de LG: ${path.relative(process.cwd(), out)} (${Math.round(fs.statSync(out).size / 1024)} KB, «${name}»)`);
+    // La misma imagen sirve de fondo en Seller Lounge y de pantalla de inicio (splash) dentro del paquete de LG
+    for (const out of [
+      path.join(TV_DIR, 'assets', 'store', 'lg', 'background-1920x1080.png'),
+      path.join(TV_DIR, 'assets', 'icons', 'webos', 'splash.png'),
+    ]) {
+      fs.writeFileSync(out, Buffer.from(png.data, 'base64'));
+      console.log(`Fondo de LG: ${path.relative(process.cwd(), out)} (${Math.round(fs.statSync(out).size / 1024)} KB, «${name}»)`);
+    }
   } finally {
     fs.rmSync(file, { force: true });
   }

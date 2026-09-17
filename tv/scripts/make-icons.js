@@ -29,7 +29,7 @@ const TARGETS = {
     /* LG: cuadrado, sin esquinas redondeadas y sin transparencia (lista de verificación de LG, «Icon») */
     { file: 'webos/icon.png', w: 80, h: 80, kind: 'square', alpha: false, note: 'webOS appinfo.json icon (80x80, cuadrado y opaco)' },
     { file: 'webos/largeIcon.png', w: 130, h: 130, kind: 'square', alpha: false, note: 'webOS appinfo.json largeIcon (130x130, cuadrado y opaco)' },
-    { file: 'webos/splash.png', w: 1920, h: 1080, kind: 'splash', note: 'webOS appinfo.json splashBackground (1920x1080)' },
+    { file: 'webos/splash.png', w: 1920, h: 1080, kind: 'splash', alpha: false, keep: true, note: 'webOS appinfo.json splashBackground (1920x1080; con letra normal: npm run shots -- --art)' },
   ],
   store: [
     { file: 'samsung/icon-512x423.png', w: 512, h: 423, kind: 'tile', alpha: false, note: 'Samsung Seller Office: icono 512x423, PNG 24 bits, < 300 KB' },
